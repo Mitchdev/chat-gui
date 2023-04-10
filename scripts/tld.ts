@@ -7,11 +7,7 @@ const TLD_MIN = 271; // Only update if at least this many found (original count)
 
 const targetFile = 'assets/tld.json';
 
-function cb() {
-  console.log('Done!');
-}
-
-function parseTLDs(data) {
+function parseTLDs(data: string): string[] | null {
   // List of pseudo TLD-s we want to support
   const list = ['bit', 'exit', 'gnu', 'i2p', 'local', 'onion', 'zkey'];
 
@@ -20,9 +16,7 @@ function parseTLDs(data) {
 
   // Parse response data by line
   const arr = data.split('\n');
-  for (const idx of arr) {
-    const tld = arr[idx];
-
+  for (const tld of arr) {
     // Ignore invalid/weird TLDs or comment
     const shouldSkip =
       typeof tld !== 'string' ||
@@ -63,18 +57,22 @@ http
     res.on('end', () => {
       // When response completes parse and replace
       const list = parseTLDs(data);
+      if (list == null) {
+        console.error(`Error parsing TLDs`);
+        return;
+      }
       console.log(`Retrieved ${list.length} tlds!`);
       fs.writeFile(targetFile, JSON.stringify(list), 'utf8', (err) => {
         if (err) {
-          console.error(`IO error writing to ${targetFile} skipping write.`);
+          console.error(
+            `IO error writing to ${targetFile} skipping write.\nDone!`
+          );
         } else {
-          console.log(`Wrote new TLDs to file ${targetFile}!`);
+          console.log(`Wrote new TLDs to file ${targetFile}!\nDone!`);
         }
-        cb();
       });
     });
   })
   .on('error', (e) => {
-    console.log(`TLD fetch failed, using defaults: ${e.message}`);
-    cb();
+    console.log(`TLD fetch failed, using defaults: ${e.message}\nDone!`);
   });

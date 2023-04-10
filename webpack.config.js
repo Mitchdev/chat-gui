@@ -60,7 +60,7 @@ module.exports = (env, argv) => ({
     },
   },
   entry: {
-    demo: './assets/demo.js',
+    demo: './assets/demo.ts',
   },
   watchOptions: {
     ignored: /node_modules/,

@@ -8,10 +8,8 @@ import streamHtml from './views/stream.html';
  * GET Params
  * t:   template [EMBED | STREAM]
  * f:   font scale on STREAM layout [1 ... 10]
- * @type {Chat}
  */
-
-const chat = new Chat({
+const chat: Chat = new Chat({
   url: 'wss://localhost:8282/chat',
   api: { base: 'https://localhost:8282' },
   cdn: { base: 'https://localhost:8282/cdn' },
@@ -25,7 +23,8 @@ switch ((Chat.reqParam('t') || 'embed').toUpperCase()) {
     chat
       .withGui(streamHtml)
       .then(() => {
-        chat.settings.set('fontscale', Chat.reqParam('f') || 1);
+        const f = Chat.reqParam('f');
+        chat.settings.set('fontscale', f == null ? 1 : +f);
         chat.applySettings(false);
       })
       .then(() => chat.loadEmotesAndFlairs())

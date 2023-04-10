@@ -16,10 +16,10 @@ class ChatUser {
       return;
     }
 
-    this.nick = data.nick || '';
-    this.username = data.nick || '';
-    this.createdDate = data.createdDate || '';
-    this.features = data.features || [];
+    this.nick = data?.nick || '';
+    this.username = data?.nick || '';
+    this.createdDate = data?.createdDate || '';
+    this.features = data?.features || [];
   }
 
   hasAnyFeatures(...features: string[]): boolean {
