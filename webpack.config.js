@@ -21,7 +21,7 @@ function bakeCookies(request) {
   request.setHeader('Cookie', cookies);
 }
 
-module.exports = {
+module.exports = (env, argv) => ({
   devServer: {
     https: true,
     port: 8282,
@@ -73,8 +73,13 @@ module.exports = {
   module: {
     rules: [
       {
+        test: /\.ts$/,
+        exclude: /(node_modules)/,
+        loader: 'ts-loader',
+      },
+      {
         test: /\.m?js$/,
-        exclude: /(node_modules|)/,
+        exclude: /(node_modules)/,
         loader: 'babel-loader',
         options: { presets: ['@babel/preset-env'] },
       },
@@ -99,6 +104,9 @@ module.exports = {
       },
     ],
   },
+  resolve: {
+    extensions: ['.ts', '.js'],
+  },
   context: __dirname,
-  devtool: false,
-};
+  devtool: argv.mode === 'development' ? 'inline-source-map' : false,
+});
