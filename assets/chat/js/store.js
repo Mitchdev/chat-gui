@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-empty-function */
 const localStorage = window.localStorage || {
   setItem: () => {},
   getItem: () => {},

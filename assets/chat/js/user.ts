@@ -2,29 +2,28 @@ import UserObject from './types/UserObject';
 import UserFeature from './features';
 
 class ChatUser {
-
-  nick: string = '';
-  username: string = '';
-  createdDate: string = '';
-  features: string[] = [];
+  nick: string;
+  username: string;
+  createdDate: string;
+  features: string[];
 
   constructor(data: string | UserObject) {
-    if (data !== undefined) {
-      if (typeof data === 'string') {
-        this.nick = data;
-        this.username = data;
-        return;
-      }
-
-      this.nick = data.nick;
-      this.username = data.nick;
-      this.createdDate = data.createdDate;
-      this.features = data.features;
+    if (typeof data === 'string') {
+      this.nick = data;
+      this.username = data;
+      this.createdDate = '';
+      this.features = [];
+      return;
     }
+
+    this.nick = data.nick || '';
+    this.username = data.nick || '';
+    this.createdDate = data.createdDate || '';
+    this.features = data.features || [];
   }
 
   hasAnyFeatures(...features: string[]): boolean {
-    return features.some(feature => this.features.includes(feature));
+    return features.some((feature) => this.features.includes(feature));
   }
 
   hasFeature(feature: string): boolean {

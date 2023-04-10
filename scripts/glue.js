@@ -1,7 +1,7 @@
 /* eslint-disable no-console, import/no-extraneous-dependencies */
-const fs = require('fs');
-const path = require('path');
-const Spritesmith = require('spritesmith');
+import fs from 'fs';
+import path from 'path';
+import Spritesmith from 'spritesmith';
 
 const NEWLINE = '\r\n';
 

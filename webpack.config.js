@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 require('dotenv').config();
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 require('webpack');

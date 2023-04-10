@@ -15,8 +15,11 @@ module.exports = {
     ecmaVersion: 'latest',
     sourceType: 'module',
   },
+  plugins: ['jest', '@typescript-eslint'],
+  ignorePatterns: ['postcss.config.js', 'typings/globals/*'],
   rules: {
     'class-methods-use-this': 'off',
+    'no-shadow': 'off',
     'no-plusplus': ['error', { allowForLoopAfterthoughts: true }],
     'no-param-reassign': ['error', { props: false }],
     'prefer-destructuring': ['error', { object: true, array: false }],
@@ -38,7 +41,23 @@ module.exports = {
           '`with` is disallowed in strict mode because it makes code impossible to predict and optimize.',
       },
     ],
+    'import/extensions': [
+      'error',
+      'ignorePackages',
+      {
+        js: 'never',
+        mjs: 'never',
+        jsx: 'never',
+        ts: 'never',
+        tsx: 'never',
+      },
+    ],
+    'lines-between-class-members': [
+      'error',
+      'always',
+      {
+        exceptAfterSingleLine: true,
+      },
+    ],
   },
-  ignorePatterns: ['postcss.config.js'],
-  plugins: ['jest', '@typescript-eslint'],
 };

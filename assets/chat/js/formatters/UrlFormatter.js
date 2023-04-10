@@ -1,7 +1,6 @@
 import $ from 'jquery';
 
-/** @var Array tlds */
-const tlds = require('../../../tld.json');
+import tlds from '../../../tld.json';
 
 const gtld = `(?:${[...tlds].join('|')})`;
 
@@ -60,23 +59,22 @@ export default class UrlFormatter {
 
   format(chat, str) {
     if (!str) return undefined;
-    const self = this;
     let extraclass = '';
 
     if (/\b(?:NSFL)\b/i.test(str)) extraclass = 'nsfl-link';
     else if (/\b(?:NSFW|SPOILERS?)\b/i.test(str)) extraclass = 'nsfw-link';
 
-    return str.replace(self.linkregex, (url, scheme) => {
-      const decodedUrl = self.elem.html(url).text();
-      const m = decodedUrl.match(self.linkregex);
+    return str.replace(this.linkregex, (url, scheme) => {
+      const decodedUrl = this.elem.html(url).text();
+      const m = decodedUrl.match(this.linkregex);
       if (m) {
-        const encodedUrl = self.encodeUrl(m[0]);
+        const encodedUrl = this.encodeUrl(m[0]);
         const maxUrlLength = 90;
         let urlText = encodedUrl;
         if (urlText.length > maxUrlLength) {
           urlText = `${urlText.slice(0, 40)}...${urlText.slice(-40)}`;
         }
-        const extra = self.encodeUrl(decodedUrl.substring(m[0].length));
+        const extra = this.encodeUrl(decodedUrl.substring(m[0].length));
         const href = `${scheme ? '' : 'http://'}${encodedUrl}`;
         return `<a target="_blank" class="externallink ${extraclass}" href="${href}" rel="nofollow">${urlText}</a>${extra}`;
       }

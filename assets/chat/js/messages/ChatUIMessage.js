@@ -31,11 +31,11 @@ export default class ChatUIMessage {
     return wrapped;
   }
 
-  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   html(chat = null) {
     return this.wrap(this.message);
   }
 
-  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-function
   afterRender(chat = null) {}
 }

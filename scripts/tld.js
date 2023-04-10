@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
-const http = require('http');
-const fs = require('fs');
+import http from 'http';
+import fs from 'fs';
 
 const TLD_FETCH_URL = 'http://data.iana.org/TLD/tlds-alpha-by-domain.txt';
 const TLD_MIN = 271; // Only update if at least this many found (original count)
