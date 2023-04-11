@@ -15,6 +15,7 @@ import {
   checkIfPinWasDismissed,
   ChatUserMessage,
   PinnedMessage,
+  ChatUIMessage,
 } from './messages';
 import {
   ChatMenu,
@@ -914,7 +915,7 @@ class Chat {
     this.mainwindow.update(true);
 
     this.setDefaultPlaceholderText();
-    MessageBuilder.status(this.config.welcomeMessage).into(this);
+    MessageBuilder.status(this.config.welcomeMessage as string).into(this);
     return Promise.resolve(this);
   }
 
@@ -1142,11 +1143,11 @@ class Chat {
     return user;
   }
 
-  addMessage(message: ChatMessage, win: ChatWindow | null = null) {
+  addMessage(message: ChatUIMessage, win: ChatWindow | null = null) {
     // Don't add the gui if user is ignored
     if (
       message.type === MessageTypes.USER &&
-      this.ignored(message.user.nick, message.message)
+      this.ignored((message as ChatUserMessage).user.nick, message.message)
     )
       return;
 
@@ -1170,26 +1171,29 @@ class Chat {
         message.message.substring(0, 4).toLowerCase() === '/me ';
       // check if this is the current users message
       (message as ChatUserMessage).isown =
-        message.user.username.toLowerCase() ===
+        (message as ChatUserMessage).user.username.toLowerCase() ===
         this.user.username.toLowerCase();
       // check if the last message was from the same user
-      message.continued =
-        win.lastmessage &&
+      (message as ChatUserMessage).continued =
+        (win.lastmessage as ChatUserMessage) &&
         !(win.lastmessage as ChatUserMessage).target &&
-        win.lastmessage.user &&
-        win.lastmessage.user.username.toLowerCase() ===
-          message.user.username.toLowerCase();
+        (win.lastmessage as ChatUserMessage).user &&
+        (win.lastmessage as ChatUserMessage).user.username.toLowerCase() ===
+          (message as ChatUserMessage).user.username.toLowerCase();
       // get mentions from message
       (message as ChatUserMessage).mentioned = Chat.extractNicks(
         message.message
       ).filter((a) => this.users.has(a.toLowerCase()));
       // set tagged state
-      (message as ChatUserMessage).tag = this.taggednicks.get(
-        message.user.nick.toLowerCase()
-      );
+      (message as ChatUserMessage).tag =
+        this.taggednicks.get(
+          (message as ChatUserMessage).user.nick.toLowerCase()
+        ) || null;
       // set tagged note
       (message as ChatUserMessage).title =
-        this.taggednotes.get(message.user.nick.toLowerCase()) || '';
+        this.taggednotes.get(
+          (message as ChatUserMessage).user.nick.toLowerCase()
+        ) || '';
       // set highlighted state
       (message as ChatUserMessage).highlighted =
         /* this.authenticated && */ !(message as ChatUserMessage).isown &&
@@ -1199,11 +1203,13 @@ class Chat {
           this.regexhighlightself.test(message.message)) ||
           // Check /highlight nicks against msg.nick
           (this.regexhighlightnicks &&
-            this.regexhighlightnicks.test(message.user.username)) ||
+            this.regexhighlightnicks.test(
+              (message as ChatUserMessage).user.username
+            )) ||
           // Check custom highlight against msg.nick and msg.message
           (this.regexhighlightcustom &&
             this.regexhighlightcustom.test(
-              `${message.user.username} ${message.message}`
+              `${(message as ChatUserMessage).user.username} ${message.message}`
             ))) as boolean);
     }
 
@@ -1223,9 +1229,9 @@ class Chat {
       this.ishidden
     ) {
       Chat.showNotification(
-        `${message.user.username} said ...`,
+        `${(message as ChatUserMessage).user.username} said ...`,
         message.message,
-        message.timestamp.valueOf(),
+        (message as ChatUserMessage).timestamp.valueOf(),
         this.settings.get('notificationtimeout') as boolean
       );
     }
@@ -1539,7 +1545,9 @@ class Chat {
         MessageBuilder.emote(textonly, data.timestamp, 2).into(this);
       }
     } else if (!this.resolveMessage(data.nick, data.data)) {
-      MessageBuilder.message(data.data, usr, data.timestamp).into(this);
+      MessageBuilder.message(data.data, usr as ChatUser, data.timestamp).into(
+        this
+      );
     }
   }
 
@@ -2447,8 +2455,9 @@ class Chat {
   cmdREPLY() {
     const win = this.getActiveWindow();
     const lastuser =
-      win.lastmessage && win.lastmessage.user
-        ? win.lastmessage.user.username
+      (win.lastmessage as ChatUserMessage) &&
+      (win.lastmessage as ChatUserMessage).user
+        ? (win.lastmessage as ChatUserMessage).user.username
         : null;
     const username =
       this.replyusername !== null && this.replyusername !== ''
@@ -2606,7 +2615,9 @@ class Chat {
     let url = parts[0];
 
     if (!this.user.hasAnyFeatures(UserFeatures.ADMIN, UserFeatures.MODERATOR)) {
-      MessageBuilder.error(errorstrings.get('nopermission')).into(this);
+      MessageBuilder.error(errorstrings.get('nopermission') as string).into(
+        this
+      );
       return;
     }
 
@@ -2648,7 +2659,9 @@ class Chat {
 
   cmdUNHOST() {
     if (!this.user.hasAnyFeatures(UserFeatures.ADMIN, UserFeatures.MODERATOR)) {
-      MessageBuilder.error(errorstrings.get('nopermission')).into(this);
+      MessageBuilder.error(errorstrings.get('nopermission') as string).into(
+        this
+      );
       return;
     }
 
@@ -2720,7 +2733,7 @@ class Chat {
                 MessageBuilder.historical(
                   e.message,
                   inboxUser,
-                  e.timestamp
+                  parseInt(e.timestamp, 10)
                 ).into(this, win);
               });
             }

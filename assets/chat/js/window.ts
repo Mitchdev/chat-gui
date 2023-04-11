@@ -3,7 +3,7 @@ import { throttle } from 'throttle-debounce';
 import ChatScrollPlugin from './scroll';
 import EventEmitter from './emitter';
 import Chat from './chat';
-import { ChatMessage } from './messages';
+import { ChatUIMessage } from './messages';
 
 const tagcolors = [
   'green',
@@ -25,7 +25,7 @@ class ChatWindow extends EventEmitter {
   scrollplugin: ChatScrollPlugin | null;
   visible: boolean;
   tag: string | null;
-  lastmessage: ChatMessage | null;
+  lastmessage: ChatUIMessage | null;
   ui: JQuery;
   lines: HTMLDivElement;
 
@@ -92,7 +92,7 @@ class ChatWindow extends EventEmitter {
     }
   }
 
-  addMessage(chat: Chat, message: ChatMessage) {
+  addMessage(chat: Chat, message: ChatUIMessage) {
     message.ui = message.html(chat) as HTMLDivElement;
     message.afterRender(chat);
     this.lastmessage = message;

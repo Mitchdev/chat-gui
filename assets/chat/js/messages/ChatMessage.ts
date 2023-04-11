@@ -13,6 +13,7 @@ import {
   SuspostFormatter,
 } from '../formatters';
 import { DATE_FORMATS } from '../const';
+import Chat from '../chat';
 
 const formatters = new Map();
 formatters.set('html', new HtmlTextFormatter());
@@ -26,21 +27,24 @@ formatters.set('embed', new EmbedUrlFormatter());
 formatters.set('badwordscensor', new BadWordsCensorshipFormatter());
 
 export default class ChatMessage extends ChatUIMessage {
+  continued: boolean;
+  timestamp: moment.Moment;
+  unformatted: boolean;
+
   constructor(
-    message,
-    timestamp = null,
+    message: string,
+    timestamp: number | null = null,
     type = MessageTypes.CHAT,
     unformatted = false
   ) {
     super(message);
-    this.user = null;
     this.type = type;
     this.continued = false;
     this.timestamp = timestamp ? moment.utc(timestamp).local() : moment();
     this.unformatted = unformatted;
   }
 
-  html(chat = null) {
+  html(chat: Chat | null = null) {
     const classes = [];
     const attr = {};
     if (this.continued) classes.push('msg-continue');
@@ -51,7 +55,7 @@ export default class ChatMessage extends ChatUIMessage {
     );
   }
 
-  buildMessageTxt(chat) {
+  buildMessageTxt(chat: Chat | null) {
     // TODO we strip off the `/me ` of every message -- must be a better way to do this
     let msg =
       this.message.substring(0, 4).toLowerCase() === '/me '

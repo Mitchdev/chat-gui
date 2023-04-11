@@ -1,8 +1,26 @@
+import Chat from '../chat';
+import { WebsiteApiTypes } from '../types';
+import ChatUser from '../user';
 import ChatMessage from './ChatMessage';
 import MessageTypes from './MessageTypes';
 
 export default class ChatUserMessage extends ChatMessage {
-  constructor(message, user, timestamp = null) {
+  user: ChatUser;
+  id: number | null;
+  isown: boolean;
+  highlighted: boolean;
+  historical: boolean;
+  target: string | null; // username
+  tag: string | null;
+  title: string;
+  slashme: boolean;
+  mentioned: string[];
+
+  constructor(
+    message: string,
+    user: ChatUser,
+    timestamp: number | null = null
+  ) {
     super(message, timestamp, MessageTypes.USER);
     this.user = user;
     this.id = null;
@@ -16,11 +34,15 @@ export default class ChatUserMessage extends ChatMessage {
     this.mentioned = [];
   }
 
-  html(chat = null) {
+  html(chat: Chat | null = null) {
     const classes = [];
-    const attr = {};
+    const attr: {
+      'data-id'?: string;
+      'data-username'?: string;
+      'data-mentioned'?: string;
+    } = {};
 
-    if (this.id) attr['data-id'] = this.id;
+    if (this.id) attr['data-id'] = this.id.toString();
     if (this.user && this.user.username) {
       classes.push(...this.user.features);
       attr['data-username'] = this.user.username.toLowerCase();
@@ -40,7 +62,7 @@ export default class ChatUserMessage extends ChatMessage {
     if (this.target) ctrl = ' whispered: ';
     else if (this.slashme || this.continued) ctrl = '';
 
-    const colorFlair = this.usernameColorFlair(chat.flairs);
+    const colorFlair = this.usernameColorFlair((chat as Chat).flairs);
     const user = `${this.buildFeatures(this.user, chat)} <a title="${
       this.title
     }" class="user ${colorFlair?.name}">${this.user.username}</a>`;
@@ -53,13 +75,18 @@ export default class ChatUserMessage extends ChatMessage {
     );
   }
 
-  buildFeatures(user, chat) {
+  buildFeatures(user: ChatUser, chat: Chat | null) {
+    if (!chat) return '';
     const features = (user.features || [])
       .filter((e) => chat.flairsMap.has(e))
       .map((e) => chat.flairsMap.get(e))
       .reduce(
         (str, e) =>
-          `${str}<i data-flair="${e.name}" class="flair ${e.name}" title="${e.label}"></i> `,
+          `${str}<i data-flair="${
+            (e as WebsiteApiTypes.Flair).name
+          }" class="flair ${(e as WebsiteApiTypes.Flair).name}" title="${
+            (e as WebsiteApiTypes.Flair).label
+          }"></i> `,
         ''
       );
     return features !== '' ? `<span class="features">${features}</span>` : '';
@@ -69,7 +96,7 @@ export default class ChatUserMessage extends ChatMessage {
    * Return the highest priority flair with a color, if one exists. This is the
    * flair whose style should be applied to the user's username.
    */
-  usernameColorFlair(allFlairs) {
+  usernameColorFlair(allFlairs: WebsiteApiTypes.Flair[]) {
     return allFlairs
       .filter((flair) =>
         this.user.features.some((userFlair) => userFlair === flair.name)

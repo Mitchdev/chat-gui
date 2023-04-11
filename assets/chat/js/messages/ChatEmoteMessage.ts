@@ -4,7 +4,8 @@ import ChatMessage from './ChatMessage';
 import MessageTypes from './MessageTypes';
 import { EmoteFormatter } from '../formatters';
 
-function ChatEmoteMessageCount(message) {
+// eslint-disable-next-line no-use-before-define
+function ChatEmoteMessageCount(message: ChatEmoteMessage) {
   if (!message || !message.combo) return;
   let stepClass = '';
   if (message.emotecount >= 50) stepClass = ' x50';
@@ -13,19 +14,36 @@ function ChatEmoteMessageCount(message) {
   else if (message.emotecount >= 10) stepClass = ' x10';
   else if (message.emotecount >= 5) stepClass = ' x5';
   message.combo.attr('class', `chat-combo${stepClass}`);
-  message.combo_count.text(`${message.emotecount}`);
-  message.ui.append(
-    message.text.detach().get(0),
-    message.combo.detach().get(0)
+  (message.combo_count as JQuery).text(`${message.emotecount}`);
+  (message.ui as HTMLDivElement).append(
+    (message.text as JQuery).detach().get(0) as HTMLElement,
+    message.combo.detach().get(0) as HTMLElement
   );
 }
+
 const ChatEmoteMessageCountThrottle = throttle(63, ChatEmoteMessageCount);
 
 export default class ChatEmoteMessage extends ChatMessage {
-  constructor(emote, timestamp, count = 1) {
+  emotecount: number;
+  emoteFormatter: EmoteFormatter;
+  text: JQuery | null;
+  combo: JQuery | null;
+  combo_count: JQuery | null;
+  combo_x: JQuery | null;
+  combo_hits: JQuery | null;
+  combo_txt: JQuery | null;
+
+  constructor(emote: string, timestamp: number | null, count = 1) {
     super(emote, timestamp, MessageTypes.EMOTE);
     this.emotecount = count;
     this.emoteFormatter = new EmoteFormatter();
+
+    this.text = null;
+    this.combo = null;
+    this.combo_count = null;
+    this.combo_x = null;
+    this.combo_hits = null;
+    this.combo_txt = null;
   }
 
   html(chat = null) {
@@ -45,16 +63,19 @@ export default class ChatEmoteMessage extends ChatMessage {
   }
 
   afterRender() {
-    this.combo.append(
-      this.combo_count,
+    (this.combo as JQuery).append(
+      this.combo_count as JQuery,
       ' ',
-      this.combo_x,
+      this.combo_x as JQuery,
       ' ',
-      this.combo_hits,
+      this.combo_hits as JQuery,
       ' ',
-      this.combo_txt
+      this.combo_txt as JQuery
     );
-    this.ui.append(this.text.get(0), this.combo.get(0));
+    (this.ui as HTMLDivElement).append(
+      (this.text as JQuery).get(0) as HTMLElement,
+      (this.combo as JQuery).get(0) as HTMLElement
+    );
   }
 
   incEmoteCount() {
@@ -64,7 +85,10 @@ export default class ChatEmoteMessage extends ChatMessage {
 
   completeCombo() {
     ChatEmoteMessageCount(this);
-    this.combo.attr('class', `${this.combo.attr('class')} combo-complete`);
+    (this.combo as JQuery).attr(
+      'class',
+      `${(this.combo as JQuery).attr('class')} combo-complete`
+    );
     this.combo = null;
     this.combo_count = null;
     this.combo_x = null;
