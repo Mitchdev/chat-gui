@@ -32,26 +32,28 @@ function parseQuestion(msg) {
   return { question, options: ['Yes', 'No'] };
 }
 function parseQuestionAndTime(rawQuestion) {
-  let time;
+  let questionTime;
   const match = rawQuestion.match(POLL_TIME);
   if (match && match[0]) {
     switch (match[0].replace(/[0-9]+/, '').toLowerCase()) {
       case 's':
-        time = parseInt(match[0], 10) * 1000;
+        questionTime = parseInt(match[0], 10) * 1000;
         break;
       case 'm':
-        time = parseInt(match[0], 10) * 60 * 1000;
+        questionTime = parseInt(match[0], 10) * 60 * 1000;
         break;
       default:
-        time = POLL_DEFAULT_TIME;
+        questionTime = POLL_DEFAULT_TIME;
         break;
     }
   } else {
-    time = POLL_DEFAULT_TIME;
+    questionTime = POLL_DEFAULT_TIME;
   }
+
   const question = parseQuestion(rawQuestion.replace(POLL_TIME, '').trim());
-  question.time = Math.max(POLL_MIN_TIME, Math.min(time, POLL_MAX_TIME));
-  return question;
+  const time = Math.max(POLL_MIN_TIME, Math.min(questionTime, POLL_MAX_TIME));
+
+  return { time, ...question };
 }
 
 class ChatPoll {

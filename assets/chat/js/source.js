@@ -105,7 +105,7 @@ class ChatSource extends EventEmitter {
     } catch (ignored) {
       data = payload;
     }
-    this.emit('DISPATCH', { data, event: eventname }); // Event is used to hook into all dispatched events
+    this.emit('DISPATCH', data); // Event is used to hook into all dispatched events
     this.emit(eventname, data);
   }
 

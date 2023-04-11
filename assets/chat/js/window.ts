@@ -3,7 +3,7 @@ import { throttle } from 'throttle-debounce';
 import ChatScrollPlugin from './scroll';
 import EventEmitter from './emitter';
 import Chat from './chat';
-import ChatUIMessage from './messages/ChatUIMessage';
+import { ChatMessage } from './messages';
 
 const tagcolors = [
   'green',
@@ -25,7 +25,7 @@ class ChatWindow extends EventEmitter {
   scrollplugin: ChatScrollPlugin | null;
   visible: boolean;
   tag: string | null;
-  lastmessage: ChatUIMessage | null;
+  lastmessage: ChatMessage | null;
   ui: JQuery;
   lines: HTMLDivElement;
 
@@ -92,7 +92,7 @@ class ChatWindow extends EventEmitter {
     }
   }
 
-  addMessage(chat: Chat, message: ChatUIMessage) {
+  addMessage(chat: Chat, message: ChatMessage) {
     message.ui = message.html(chat) as HTMLDivElement;
     message.afterRender(chat);
     this.lastmessage = message;
@@ -113,7 +113,7 @@ class ChatWindow extends EventEmitter {
     });
   }
 
-  update(forcePin: boolean) {
+  update(forcePin = false) {
     if (this.scrollplugin) {
       this.scrollplugin.update(forcePin);
     }

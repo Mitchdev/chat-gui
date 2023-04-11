@@ -1,5 +1,5 @@
-import ChatUserObject from './types/ChatUserObject';
 import UserFeature from './features';
+import { ChatWebsocketTypes } from './types';
 
 class ChatUser {
   nick: string;
@@ -7,7 +7,9 @@ class ChatUser {
   createdDate: string;
   features: string[];
 
-  constructor(data: string | ChatUserObject) {
+  constructor(
+    data: string | ChatWebsocketTypes.IN.SimplifiedUser | null = null
+  ) {
     if (typeof data === 'string') {
       this.nick = data;
       this.username = data;

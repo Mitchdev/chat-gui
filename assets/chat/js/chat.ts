@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
-import { fetch } from 'whatwg-fetch';
+import 'whatwg-fetch';
 import $ from 'jquery';
 import { debounce } from 'throttle-debounce';
 import moment from 'moment';
@@ -13,6 +13,8 @@ import {
   MessageTypes,
   ChatMessage,
   checkIfPinWasDismissed,
+  ChatUserMessage,
+  PinnedMessage,
 } from './messages';
 import {
   ChatMenu,
@@ -23,6 +25,12 @@ import {
   ChatSettingsMenu,
   ChatUserInfoMenu,
 } from './menus';
+import {
+  ChatConfig,
+  ChatWebsocketTypes,
+  ChatWhisper,
+  WebsiteApiTypes,
+} from './types';
 import ChatAutoComplete from './autocomplete';
 import ChatInputHistory from './history';
 import ChatUserFocus from './focus';
@@ -35,6 +43,7 @@ import EmoteService from './emotes';
 import UserFeatures from './features';
 import makeSafeForRegex from './regex';
 import { HashLinkConverter, MISSING_ARG_ERROR } from './hashlinkconverter';
+import ChatEmoteMessage from './messages/ChatEmoteMessage';
 
 const regexslashcmd = /^\/([a-z0-9]+)[\s]?/i;
 const regextime = /(\d+(?:\.\d*)?)([a-z]+)?/gi;
@@ -114,7 +123,7 @@ const hintstrings = new Map([
     'Destiny is an Amazon Associate. He earns a commission on qualifying purchases of any product on Amazon linked in Destiny.gg chat.',
   ],
 ]);
-const settingsdefault = new Map([
+const settingsdefault = new Map<string, unknown>([
   ['schemaversion', 2],
   ['showtime', false],
   ['hideflairicons', false],
@@ -382,11 +391,61 @@ const banstruct = {
 };
 
 class Chat {
-  constructor(config) {
+  config: ChatConfig;
+  ui: JQuery | null;
+  css: CSSStyleSheet | null;
+  output: JQuery | null;
+  input: JQuery | null;
+  subonlyicon: JQuery | null;
+  loginscrn: JQuery | null;
+  loadingscrn: JQuery | null;
+  showmotd: boolean;
+  subonly: boolean;
+  ishidden: boolean;
+  authenticated: boolean;
+  backlogloading: boolean;
+  busymentions: boolean;
+  busystalk: boolean;
+  nextallowedmentions: moment.Moment | null;
+  nextallowedstalk: moment.Moment | null;
+  unresolved: ChatUserMessage[];
+  debouncedsave: debounce<() => void> | null;
+  debounceFocus: debounce<(chat: this) => void> | null;
+
+  flairs: WebsiteApiTypes.Flair[];
+  flairsMap: Map<string, WebsiteApiTypes.Flair>;
+  emoteService: EmoteService;
+
+  user: ChatUser;
+  users: Map<string, ChatUser>;
+  whispers: Map<string, ChatWhisper>;
+  windows: Map<string, ChatWindow>;
+  settings: Map<string, unknown>;
+  autocomplete: ChatAutoComplete;
+  inputhistory: ChatInputHistory | null;
+  userfocus: ChatUserFocus | null;
+  mutedtimer: MutedTimer | null;
+  chatpoll: ChatPoll | null;
+  pinnedMessage: PinnedMessage | null;
+  menus: Map<string, ChatMenu>;
+  taggednicks: Map<string, string>;
+  taggednotes: Map<string, string>;
+  ignoring: Set<string>;
+  mainwindow: ChatWindow | null;
+  windowselect: JQuery | null;
+  ignoreregex: RegExp | null;
+  regexhighlightcustom: RegExp | null;
+  regexhighlightnicks: RegExp | null;
+  regexhighlightself: RegExp | null;
+  replyusername: string | null;
+  lasthintindex: number | null;
+
+  control: EventEmitter;
+  hashLinkConverter: HashLinkConverter;
+  source: ChatSource;
+
+  constructor(config: ChatConfig) {
     this.config = {
-      url: '',
-      api: { base: '' },
-      cdn: { base: '' },
       cacheKey: '',
       banAppealUrl: null,
       amazonTags: null,
@@ -404,9 +463,16 @@ class Chat {
     this.loadingscrn = null;
     this.showmotd = true;
     this.subonly = false;
+    this.ishidden = true;
     this.authenticated = false;
     this.backlogloading = false;
+    this.busymentions = false;
+    this.busystalk = false;
+    this.nextallowedmentions = null;
+    this.nextallowedstalk = null;
     this.unresolved = [];
+    this.debouncedsave = null;
+    this.debounceFocus = null;
 
     this.flairs = [];
     this.flairsMap = new Map();
@@ -418,119 +484,165 @@ class Chat {
     this.windows = new Map();
     this.settings = new Map(settingsdefault);
     this.autocomplete = new ChatAutoComplete();
+    this.inputhistory = null;
+    this.userfocus = null;
+    this.mutedtimer = null;
+    this.chatpoll = null;
+    this.pinnedMessage = null;
     this.menus = new Map();
     this.taggednicks = new Map();
     this.taggednotes = new Map();
     this.ignoring = new Set();
     this.mainwindow = null;
+    this.windowselect = null;
+    this.ignoreregex = null;
     this.regexhighlightcustom = null;
     this.regexhighlightnicks = null;
     this.regexhighlightself = null;
     this.replyusername = null;
+    this.lasthintindex = null;
 
     // An interface to tell the chat to do things via chat commands, or via emit
     // e.g. control.emit('CONNECT', 'ws://localhost:9001') is essentially chat.cmdCONNECT('ws://localhost:9001')
-    this.control = new EventEmitter(this);
-
+    this.control = new EventEmitter();
     // A converter to convert URLs into an embed hash link
     this.hashLinkConverter = new HashLinkConverter();
-
     // The websocket connection, emits events from the chat server
     this.source = new ChatSource();
 
-    this.source.on('REFRESH', () => window.location.reload(false));
+    this.source.on('REFRESH', () => window.location.reload());
     this.source.on('PING', (data) => this.source.send('PONG', data));
-    this.source.on('CONNECTING', (data) => this.onCONNECTING(data));
+    this.source.on('CONNECTING', (data) => this.onCONNECTING(data as string));
     this.source.on('OPEN', (data) => this.onOPEN(data));
     this.source.on('DISPATCH', (data) => this.onDISPATCH(data));
-    this.source.on('CLOSE', (data) => this.onCLOSE(data));
-    this.source.on('NAMES', (data) => this.onNAMES(data));
-    this.source.on('PIN', (data) => this.onPIN(data));
-    this.source.on('QUIT', (data) => this.onQUIT(data));
-    this.source.on('MSG', (data) => this.onMSG(data));
-    this.source.on('MUTE', (data) => this.onMUTE(data));
-    this.source.on('UNMUTE', (data) => this.onUNMUTE(data));
-    this.source.on('BAN', (data) => this.onBAN(data));
-    this.source.on('UNBAN', (data) => this.onUNBAN(data));
-    this.source.on('ERR', (data) => this.onERR(data));
+    this.source.on('CLOSE', (data) => this.onCLOSE(data as number));
+    this.source.on('NAMES', (data) =>
+      this.onNAMES(data as ChatWebsocketTypes.IN.Names)
+    );
+    this.source.on('PIN', (data) =>
+      this.onPIN(data as ChatWebsocketTypes.IN.Pin)
+    );
+    this.source.on('QUIT', (data) =>
+      this.onQUIT(data as ChatWebsocketTypes.IN.UserQuit)
+    );
+    this.source.on('MSG', (data) =>
+      this.onMSG(data as ChatWebsocketTypes.IN.Message)
+    );
+    this.source.on('MUTE', (data) =>
+      this.onMUTE(data as ChatWebsocketTypes.IN.Mute)
+    );
+    this.source.on('UNMUTE', (data) =>
+      this.onUNMUTE(data as ChatWebsocketTypes.IN.Unmute)
+    );
+    this.source.on('BAN', (data) =>
+      this.onBAN(data as ChatWebsocketTypes.IN.Ban)
+    );
+    this.source.on('UNBAN', (data) =>
+      this.onUNBAN(data as ChatWebsocketTypes.IN.Unban)
+    );
+    this.source.on('ERR', (data) =>
+      this.onERR(data as ChatWebsocketTypes.IN.Error)
+    );
     this.source.on('SOCKETERROR', (data) => this.onSOCKETERROR(data));
-    this.source.on('SUBONLY', (data) => this.onSUBONLY(data));
-    this.source.on('BROADCAST', (data) => this.onBROADCAST(data));
-    this.source.on('PRIVMSGSENT', (data) => this.onPRIVMSGSENT(data));
-    this.source.on('PRIVMSG', (data) => this.onPRIVMSG(data));
-    this.source.on('POLLSTART', (data) => this.onPOLLSTART(data));
-    this.source.on('POLLSTOP', (data) => this.onPOLLSTOP(data));
-    this.source.on('VOTECAST', (data) => this.onVOTECAST(data));
+    this.source.on('SUBONLY', (data) =>
+      this.onSUBONLY(data as ChatWebsocketTypes.IN.SubOnly)
+    );
+    this.source.on('BROADCAST', (data) =>
+      this.onBROADCAST(data as ChatWebsocketTypes.IN.Broadcast)
+    );
+    this.source.on('PRIVMSGSENT', () => this.onPRIVMSGSENT());
+    this.source.on('PRIVMSG', (data) =>
+      this.onPRIVMSG(data as ChatWebsocketTypes.IN.PrivateMessage)
+    );
+    this.source.on('POLLSTART', (data) =>
+      this.onPOLLSTART(data as ChatWebsocketTypes.IN.PollStart)
+    );
+    this.source.on('POLLSTOP', () => this.onPOLLSTOP());
+    this.source.on('VOTECAST', (data) =>
+      this.onVOTECAST(data as ChatWebsocketTypes.IN.VoteCast)
+    );
 
-    this.control.on('SEND', (data) => this.cmdSEND(data));
-    this.control.on('HINT', (data) => this.cmdHINT(data));
-    this.control.on('EMOTES', (data) => this.cmdEMOTES(data));
-    this.control.on('HELP', (data) => this.cmdHELP(data));
-    this.control.on('IGNORE', (data) => this.cmdIGNORE(data));
-    this.control.on('UNIGNORE', (data) => this.cmdUNIGNORE(data));
-    this.control.on('UNIGNOREALL', (data) => this.cmdUNIGNOREALL(data));
-    this.control.on('MUTE', (data) => this.cmdMUTE(data));
-    this.control.on('BAN', (data) => this.cmdBAN(data, 'BAN'));
-    this.control.on('IPBAN', (data) => this.cmdBAN(data, 'IPBAN'));
-    this.control.on('UNMUTE', (data) => this.cmdUNBAN(data, 'UNMUTE'));
-    this.control.on('UNBAN', (data) => this.cmdUNBAN(data, 'UNBAN'));
-    this.control.on('SUBONLY', (data) => this.cmdSUBONLY(data, 'SUBONLY'));
-    this.control.on('MAXLINES', (data) => this.cmdMAXLINES(data, 'MAXLINES'));
+    this.control.on('SEND', (data) => this.cmdSEND(data as string));
+    this.control.on('HINT', (data) => this.cmdHINT(data as string[]));
+    this.control.on('EMOTES', () => this.cmdEMOTES());
+    this.control.on('HELP', () => this.cmdHELP());
+    this.control.on('IGNORE', (data) => this.cmdIGNORE(data as string[]));
+    this.control.on('UNIGNORE', (data) => this.cmdUNIGNORE(data as string[]));
+    this.control.on('UNIGNOREALL', (data) =>
+      this.cmdUNIGNOREALL(data as string[])
+    );
+    this.control.on('MUTE', (data) => this.cmdMUTE(data as string[]));
+    this.control.on('BAN', (data) => this.cmdBAN(data as string[], 'BAN'));
+    this.control.on('IPBAN', (data) => this.cmdBAN(data as string[], 'IPBAN'));
+    this.control.on('UNMUTE', (data) =>
+      this.cmdUNBAN(data as string[], 'UNMUTE')
+    );
+    this.control.on('UNBAN', (data) =>
+      this.cmdUNBAN(data as string[], 'UNBAN')
+    );
+    this.control.on('SUBONLY', (data) =>
+      this.cmdSUBONLY(data as string[], 'SUBONLY')
+    );
+    this.control.on('MAXLINES', (data) =>
+      this.cmdMAXLINES(data as string[], 'MAXLINES')
+    );
     this.control.on('UNHIGHLIGHT', (data) =>
-      this.cmdHIGHLIGHT(data, 'UNHIGHLIGHT')
+      this.cmdHIGHLIGHT(data as string[], 'UNHIGHLIGHT')
     );
     this.control.on('HIGHLIGHT', (data) =>
-      this.cmdHIGHLIGHT(data, 'HIGHLIGHT')
+      this.cmdHIGHLIGHT(data as string[], 'HIGHLIGHT')
     );
-    this.control.on('TIMESTAMPFORMAT', (data) => this.cmdTIMESTAMPFORMAT(data));
-    this.control.on('BROADCAST', (data) => this.cmdBROADCAST(data));
-    this.control.on('CONNECT', (data) => this.cmdCONNECT(data));
-    this.control.on('TAG', (data) => this.cmdTAG(data));
-    this.control.on('UNTAG', (data) => this.cmdUNTAG(data));
-    this.control.on('EMBED', (data) => this.cmdEMBED(data));
-    this.control.on('E', (data) => this.cmdEMBED(data));
-    this.control.on('POSTEMBED', (data) => this.cmdPOSTEMBED(data));
-    this.control.on('PE', (data) => this.cmdPOSTEMBED(data));
-    this.control.on('BANINFO', (data) => this.cmdBANINFO(data));
-    this.control.on('OPEN', (data) => this.cmdOPEN(data));
-    this.control.on('O', (data) => this.cmdOPEN(data));
-    this.control.on('EXIT', (data) => this.cmdEXIT(data));
-    this.control.on('MESSAGE', (data) => this.cmdWHISPER(data));
-    this.control.on('MSG', (data) => this.cmdWHISPER(data));
-    this.control.on('WHISPER', (data) => this.cmdWHISPER(data));
-    this.control.on('W', (data) => this.cmdWHISPER(data));
-    this.control.on('TELL', (data) => this.cmdWHISPER(data));
-    this.control.on('T', (data) => this.cmdWHISPER(data));
-    this.control.on('NOTIFY', (data) => this.cmdWHISPER(data));
-    this.control.on('R', (data) => this.cmdREPLY(data));
-    this.control.on('REPLY', (data) => this.cmdREPLY(data));
-    this.control.on('MENTIONS', (data) => this.cmdMENTIONS(data));
-    this.control.on('M', (data) => this.cmdMENTIONS(data));
-    this.control.on('STALK', (data) => this.cmdSTALK(data));
-    this.control.on('S', (data) => this.cmdSTALK(data));
+    this.control.on('TIMESTAMPFORMAT', (data) =>
+      this.cmdTIMESTAMPFORMAT(data as string[])
+    );
+    this.control.on('BROADCAST', (data) => this.cmdBROADCAST(data as string[]));
+    this.control.on('CONNECT', (data) => this.cmdCONNECT(data as string[]));
+    this.control.on('TAG', (data) => this.cmdTAG(data as string[]));
+    this.control.on('UNTAG', (data) => this.cmdUNTAG(data as string[]));
+    this.control.on('EMBED', (data) => this.cmdEMBED(data as string[]));
+    this.control.on('E', (data) => this.cmdEMBED(data as string[]));
+    this.control.on('POSTEMBED', (data) => this.cmdPOSTEMBED(data as string[]));
+    this.control.on('PE', (data) => this.cmdPOSTEMBED(data as string[]));
+    this.control.on('BANINFO', () => this.cmdBANINFO());
+    this.control.on('OPEN', (data) => this.cmdOPEN(data as string[]));
+    this.control.on('O', (data) => this.cmdOPEN(data as string[]));
+    this.control.on('EXIT', () => this.cmdEXIT());
+    this.control.on('MESSAGE', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('MSG', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('WHISPER', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('W', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('TELL', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('T', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('NOTIFY', (data) => this.cmdWHISPER(data as string[]));
+    this.control.on('R', () => this.cmdREPLY());
+    this.control.on('REPLY', () => this.cmdREPLY());
+    this.control.on('MENTIONS', (data) => this.cmdMENTIONS(data as string[]));
+    this.control.on('M', (data) => this.cmdMENTIONS(data as string[]));
+    this.control.on('STALK', (data) => this.cmdSTALK(data as string[]));
+    this.control.on('S', (data) => this.cmdSTALK(data as string[]));
     this.control.on('SHOWPOLL', () => this.cmdSHOWPOLL());
     this.control.on('SHOWVOTE', () => this.cmdSHOWPOLL());
-    this.control.on('V', (data) => this.cmdPOLL(data, 'POLL'));
-    this.control.on('POLL', (data) => this.cmdPOLL(data, 'POLL'));
-    this.control.on('VOTE', (data) => this.cmdPOLL(data, 'POLL'));
-    this.control.on('SPOLL', (data) => this.cmdPOLL(data, 'SPOLL'));
-    this.control.on('SVOTE', (data) => this.cmdPOLL(data, 'SPOLL'));
-    this.control.on('POLLSTOP', (data) => this.cmdPOLLSTOP(data));
-    this.control.on('VOTESTOP', (data) => this.cmdPOLLSTOP(data));
-    this.control.on('VS', (data) => this.cmdPOLLSTOP(data));
-    this.control.on('PIN', (data) => this.cmdPIN(data));
-    this.control.on('MOTD', (data) => this.cmdPIN(data));
+    this.control.on('V', (data) => this.cmdPOLL(data as string[], 'POLL'));
+    this.control.on('POLL', (data) => this.cmdPOLL(data as string[], 'POLL'));
+    this.control.on('VOTE', (data) => this.cmdPOLL(data as string[], 'POLL'));
+    this.control.on('SPOLL', (data) => this.cmdPOLL(data as string[], 'SPOLL'));
+    this.control.on('SVOTE', (data) => this.cmdPOLL(data as string[], 'SPOLL'));
+    this.control.on('POLLSTOP', () => this.cmdPOLLSTOP());
+    this.control.on('VOTESTOP', () => this.cmdPOLLSTOP());
+    this.control.on('VS', () => this.cmdPOLLSTOP());
+    this.control.on('PIN', (data) => this.cmdPIN(data as string[]));
+    this.control.on('MOTD', (data) => this.cmdPIN(data as string[]));
     this.control.on('UNPIN', () => this.cmdUNPIN());
     this.control.on('UNMOTD', () => this.cmdUNPIN());
-    this.control.on('HOST', (data) => this.cmdHOST(data));
+    this.control.on('HOST', (data) => this.cmdHOST(data as string[]));
     this.control.on('UNHOST', () => this.cmdUNHOST());
   }
 
-  setUser(user) {
+  setUser(user: ChatUser | null) {
     if (!user || user.username === '') {
-      this.user = this.addUser({
-        nick: `User${Math.floor(Math.random() * (99999 - 10000 + 1))}${10000}`,
-      });
+      this.user = this.addUser(
+        `User${Math.floor(Math.random() * (99999 - 10000 + 1))}${10000}`
+      );
       this.authenticated = false;
     } else {
       this.user = this.addUser(user);
@@ -540,7 +652,7 @@ class Chat {
     return this;
   }
 
-  setSettings(settings) {
+  setSettings(settings: Map<string, unknown> | null = null) {
     // If authed and #settings.profilesettings=true use #settings
     // Else use whats in LocalStorage#chat.settings
     const stored =
@@ -556,22 +668,26 @@ class Chat {
     }
     // Upgrade if schema is out of date
     const oldversion = stored.has('schemaversion')
-      ? parseInt(stored.get('schemaversion'), 10)
+      ? parseInt(stored.get('schemaversion') as string, 10)
       : -1;
-    const newversion = settingsdefault.get('schemaversion');
+    const newversion = settingsdefault.get('schemaversion') as number;
     if (oldversion !== -1 && newversion > oldversion) {
-      Settings.upgrade(this, oldversion, newversion);
+      Settings.upgrade(this, oldversion);
       this.settings.set('schemaversion', newversion);
       this.saveSettings();
     }
 
-    this.taggednicks = new Map(this.settings.get('taggednicks'));
-    this.taggednotes = new Map(this.settings.get('taggednotes'));
-    this.ignoring = new Set(this.settings.get('ignorenicks'));
+    this.taggednicks = new Map(
+      this.settings.get('taggednicks') as [string, string][]
+    );
+    this.taggednotes = new Map(
+      this.settings.get('taggednotes') as [string, string][]
+    );
+    this.ignoring = new Set(this.settings.get('ignorenicks') as string[]);
     return this.applySettings(false);
   }
 
-  withGui(template, appendTo = null) {
+  withGui(template: string, appendTo = null) {
     this.ui = $(template);
     this.ui.prependTo(appendTo || 'body');
 
@@ -667,9 +783,11 @@ class Chat {
       if (isKeyCode(e, KEYCODES.ENTER) && !e.shiftKey && !e.ctrlKey) {
         e.preventDefault();
         e.stopPropagation();
-        this.control.emit('SEND', this.input.val().toString().trim());
-        this.adjustInputHeight();
-        this.input.focus();
+        if (this.input) {
+          this.control.emit('SEND', (this.input.val() as string).trim());
+          this.adjustInputHeight();
+          this.input.trigger('focus');
+        }
       }
     });
 
@@ -739,14 +857,14 @@ class Chat {
     this.windowselect.on('click', '.tab-close', (e) => {
       ChatMenu.closeMenus(this);
       this.removeWindow($(e.currentTarget).parent().data('name').toLowerCase());
-      this.input.focus();
+      (this.input as JQuery).trigger('focus');
       return false;
     });
     this.windowselect.on('click', '.tab', (e) => {
       ChatMenu.closeMenus(this);
       this.windowToFront($(e.currentTarget).data('name').toLowerCase());
-      this.menus.get('whisper-users').redraw();
-      this.input.focus();
+      (this.menus.get('whisper-users') as ChatWhisperUsers).redraw();
+      (this.input as JQuery).trigger('focus');
       return false;
     });
 
@@ -761,9 +879,9 @@ class Chat {
 
     // Login
     this.loginscrn.on('click', '#chat-btn-login', () => {
-      this.loginscrn.hide();
+      (this.loginscrn as JQuery).hide();
       try {
-        window.top.showLoginModal();
+        (window.top as Window).showLoginModal();
       } catch (e) {
         const uri = `${window.location.protocol}//${window.location.hostname}${
           window.location.port ? `:${window.location.port}` : ''
@@ -783,14 +901,16 @@ class Chat {
       return false;
     });
 
-    this.loginscrn.on('click', '#chat-btn-cancel', () => this.loginscrn.hide());
+    this.loginscrn.on('click', '#chat-btn-cancel', () =>
+      (this.loginscrn as JQuery).hide()
+    );
     this.output.on('click mousedown', '.msg-whisper a.user', (e) => {
       const msg = $(e.target).closest('.msg-chat');
       this.openConversation(msg.data('username').toString().toLowerCase());
       return false;
     });
 
-    this.loadingscrn.fadeOut(250, () => this.loadingscrn.remove());
+    this.loadingscrn.fadeOut(250, () => (this.loadingscrn as JQuery).remove());
     this.mainwindow.update(true);
 
     this.setDefaultPlaceholderText();
@@ -865,7 +985,7 @@ class Chat {
         credentials: 'include',
       })
         .then((res) => res.json())
-        .then((d) => {
+        .then((d: WebsiteApiTypes.UnreadWhisper[]) => {
           d.forEach((e) =>
             this.whispers.set(e.username.toLowerCase(), {
               id: e.messageid,
@@ -875,12 +995,14 @@ class Chat {
             })
           );
         })
-        .then(() => this.menus.get('whisper-users').redraw())
+        .then(() =>
+          (this.menus.get('whisper-users') as ChatWhisperUsers).redraw()
+        )
         .catch(() => {});
     }
   }
 
-  setEmotes(emotes) {
+  setEmotes(emotes: WebsiteApiTypes.Emote[]) {
     this.emoteService.setEmotes(emotes);
     this.emoteService
       .emotesForUser(this.user)
@@ -889,20 +1011,20 @@ class Chat {
     return this;
   }
 
-  setFlairs(flairs) {
+  setFlairs(flairs: WebsiteApiTypes.Flair[]) {
     this.flairs = flairs;
     this.flairsMap = new Map();
     flairs.forEach((v) => this.flairsMap.set(v.name, v));
     return this;
   }
 
-  setHistory(history) {
+  setHistory(history: string[]) {
     if (history && history.length > 0) {
       this.backlogloading = true;
       history.forEach((line) => this.source.parseAndDispatch({ data: line }));
       this.backlogloading = false;
       MessageBuilder.element('<hr/>').into(this);
-      this.mainwindow.update(true);
+      (this.mainwindow as ChatWindow).update(true);
     }
     return this;
   }
@@ -939,7 +1061,8 @@ class Chat {
     if (save) this.saveSettings();
 
     // Formats
-    DATE_FORMATS.TIME = this.settings.get('timestampformat');
+    // TODO: cannot assign value to const
+    // DATE_FORMATS.TIME = this.settings.get('timestampformat');
 
     // Ignore Regex
     const ignores = Array.from(this.ignoring.values()).map(makeSafeForRegex);
@@ -949,12 +1072,12 @@ class Chat {
         : null;
 
     // Highlight Regex
-    const cust = [...(this.settings.get('customhighlight') || [])].filter(
-      (a) => a !== ''
-    );
-    const nicks = [...(this.settings.get('highlightnicks') || [])].filter(
-      (a) => a !== ''
-    );
+    const cust = [
+      ...((this.settings.get('customhighlight') as string[]) || []),
+    ].filter((a) => a !== '');
+    const nicks = [
+      ...((this.settings.get('highlightnicks') as string[]) || []),
+    ].filter((a) => a !== '');
     this.regexhighlightself = this.user.nick
       ? new RegExp(`\\b(?:${this.user.nick})\\b`, 'i')
       : null;
@@ -967,24 +1090,30 @@ class Chat {
     Array.from(this.settings.keys())
       .filter((key) => typeof this.settings.get(key) === 'boolean')
       .forEach((key) =>
-        this.ui.toggleClass(`pref-${key}`, this.settings.get(key))
+        (this.ui as JQuery).toggleClass(
+          `pref-${key}`,
+          this.settings.get(key) as boolean
+        )
       );
 
     // Update maxlines
     [...this.windows.values()].forEach((w) => {
-      w.maxlines = this.settings.get('maxlines');
+      w.maxlines = this.settings.get('maxlines') as number;
     });
 
     // Font scaling
     // TODO document.body :(
-    const fontscale = this.settings.get('fontscale') || 'auto';
+    const fontscale = (this.settings.get('fontscale') as string) || 'auto';
     $(document.body).toggleClass(`pref-fontscale`, fontscale !== 'auto');
     $(document.body).attr('data-fontscale', fontscale);
     return Promise.resolve(this);
   }
 
-  addUser(data) {
-    if (!data) return null;
+  addUser(
+    data: string | ChatWebsocketTypes.IN.SimplifiedUser | null
+  ): ChatUser {
+    if (!data) return new ChatUser();
+    if (typeof data === 'string') return new ChatUser(data);
     const normalized = data.nick.toLowerCase();
     let user = this.users.get(normalized);
     if (!user) {
@@ -992,22 +1121,28 @@ class Chat {
       this.users.set(normalized, user);
     } else {
       if (
-        Object.hasOwn(data, 'features') &&
-        !Chat.isArraysEqual(data.features, user.features)
+        (data as ChatWebsocketTypes.IN.SimplifiedUser).features &&
+        !Chat.isArraysEqual(
+          (data as ChatWebsocketTypes.IN.SimplifiedUser).features,
+          user.features
+        )
       ) {
-        user.features = data.features;
+        user.features = (data as ChatWebsocketTypes.IN.SimplifiedUser).features;
       }
       if (
-        Object.hasOwn(data, 'createdDate') &&
-        data.createdDate !== user.createdDate
+        (data as ChatWebsocketTypes.IN.SimplifiedUser).createdDate &&
+        (data as ChatWebsocketTypes.IN.SimplifiedUser).createdDate !==
+          user.createdDate
       ) {
-        user.createdDate = data.createdDate;
+        user.createdDate = (
+          data as ChatWebsocketTypes.IN.SimplifiedUser
+        ).createdDate;
       }
     }
     return user;
   }
 
-  addMessage(message, win = null) {
+  addMessage(message: ChatMessage, win: ChatWindow | null = null) {
     // Don't add the gui if user is ignored
     if (
       message.type === MessageTypes.USER &&
@@ -1016,48 +1151,51 @@ class Chat {
       return;
 
     // eslint-disable-next-line no-param-reassign
-    if (win === null) win = this.mainwindow;
+    if (win === null) win = this.mainwindow as ChatWindow;
 
     // Break the current combo if this message is not an emote
     // We don't need to check what type the current message is, we just know that its a new message, so the combo is invalid.
     if (
       win.lastmessage &&
       win.lastmessage.type === MessageTypes.EMOTE &&
-      win.lastmessage.emotecount > 1
-    )
-      win.lastmessage.completeCombo();
+      (win.lastmessage as ChatEmoteMessage).emotecount > 1
+    ) {
+      (win.lastmessage as ChatEmoteMessage).completeCombo();
+    }
 
     // Populate the tag, mentioned users and highlight for this $message.
     if (message.type === MessageTypes.USER) {
       // check if message is `/me `
-      message.slashme =
+      (message as ChatUserMessage).slashme =
         message.message.substring(0, 4).toLowerCase() === '/me ';
       // check if this is the current users message
-      message.isown =
+      (message as ChatUserMessage).isown =
         message.user.username.toLowerCase() ===
         this.user.username.toLowerCase();
       // check if the last message was from the same user
       message.continued =
         win.lastmessage &&
-        !win.lastmessage.target &&
+        !(win.lastmessage as ChatUserMessage).target &&
         win.lastmessage.user &&
         win.lastmessage.user.username.toLowerCase() ===
           message.user.username.toLowerCase();
       // get mentions from message
-      message.mentioned = Chat.extractNicks(message.message).filter((a) =>
-        this.users.has(a.toLowerCase())
-      );
+      (message as ChatUserMessage).mentioned = Chat.extractNicks(
+        message.message
+      ).filter((a) => this.users.has(a.toLowerCase()));
       // set tagged state
-      message.tag = this.taggednicks.get(message.user.nick.toLowerCase());
+      (message as ChatUserMessage).tag = this.taggednicks.get(
+        message.user.nick.toLowerCase()
+      );
       // set tagged note
-      message.title =
+      (message as ChatUserMessage).title =
         this.taggednotes.get(message.user.nick.toLowerCase()) || '';
       // set highlighted state
-      message.highlighted =
-        /* this.authenticated && */ !message.isown &&
+      (message as ChatUserMessage).highlighted =
+        /* this.authenticated && */ !(message as ChatUserMessage).isown &&
         // Check current user nick against msg.message (if highlight setting is on)
-        ((this.regexhighlightself &&
-          this.settings.get('highlight') &&
+        (((this.regexhighlightself &&
+          (this.settings.get('highlight') as boolean) &&
           this.regexhighlightself.test(message.message)) ||
           // Check /highlight nicks against msg.nick
           (this.regexhighlightnicks &&
@@ -1066,7 +1204,7 @@ class Chat {
           (this.regexhighlightcustom &&
             this.regexhighlightcustom.test(
               `${message.user.username} ${message.message}`
-            )));
+            ))) as boolean);
     }
 
     // This looks odd, although it would be a correct implementation
@@ -1080,7 +1218,7 @@ class Chat {
     // Show desktop notification
     if (
       !this.backlogloading &&
-      message.highlighted &&
+      (message as ChatUserMessage).highlighted &&
       this.settings.get('notificationhighlight') &&
       this.ishidden
     ) {
@@ -1088,14 +1226,14 @@ class Chat {
         `${message.user.username} said ...`,
         message.message,
         message.timestamp.valueOf(),
-        this.settings.get('notificationtimeout')
+        this.settings.get('notificationtimeout') as boolean
       );
     }
 
     win.update();
   }
 
-  resolveMessage(nick, str) {
+  resolveMessage(nick: string, str: string) {
     for (const message of this.unresolved) {
       if (
         this.user.username.toLowerCase() === nick.toLowerCase() &&
@@ -1108,28 +1246,30 @@ class Chat {
     return false;
   }
 
-  removeMessageByNick(nick) {
-    this.mainwindow.removelines(
+  removeMessageByNick(nick: string) {
+    (this.mainwindow as ChatWindow).removelines(
       `.msg-chat[data-username="${nick.toLowerCase()}"]`
     );
-    this.mainwindow.update();
+    (this.mainwindow as ChatWindow).update();
   }
 
-  windowToFront(name) {
+  windowToFront(name: string) {
     const win = this.windows.get(name);
-    if (win !== null && win !== this.getActiveWindow()) {
-      this.windows.forEach((w) => {
-        if (w.visible) w.hide();
-      });
-      win.show();
-      win.update();
-      this.redrawWindowIndicators();
-    }
+    if (win !== undefined) {
+      if (win !== this.getActiveWindow()) {
+        this.windows.forEach((w) => {
+          if (w.visible) w.hide();
+        });
+        win.show();
+        win.update();
+        this.redrawWindowIndicators();
+      }
 
-    if (win.name === 'main' && this.mutedtimer.ticking) {
-      this.mutedtimer.updatePlaceholderText();
-    } else {
-      this.setDefaultPlaceholderText();
+      if (win.name === 'main' && this.mutedtimer && this.mutedtimer.ticking) {
+        this.mutedtimer.updatePlaceholderText();
+      } else {
+        this.setDefaultPlaceholderText();
+      }
     }
 
     return win;
@@ -1139,16 +1279,16 @@ class Chat {
     return [...this.windows.values()].filter((win) => win.visible)[0];
   }
 
-  getWindow(name) {
+  getWindow(name: string) {
     return this.windows.get(name);
   }
 
-  addWindow(name, win) {
+  addWindow(name: string, win: ChatWindow) {
     this.windows.set(name, win);
     this.redrawWindowIndicators();
   }
 
-  removeWindow(name) {
+  removeWindow(name: string) {
     const win = this.windows.get(name);
     if (win) {
       const { visible } = win;
@@ -1156,7 +1296,9 @@ class Chat {
       win.destroy();
       if (visible) {
         const keys = [...this.windows.keys()];
-        this.windowToFront(this.windows.get(keys[keys.length - 1]).name);
+        this.windowToFront(
+          (this.windows.get(keys[keys.length - 1]) as ChatWindow).name
+        );
       } else {
         this.redrawWindowIndicators();
       }
@@ -1165,19 +1307,19 @@ class Chat {
 
   redrawWindowIndicators() {
     if (this.windows.size > 1) {
-      this.windowselect.empty();
+      (this.windowselect as JQuery).empty();
       this.windows.forEach((w) => {
         if (w.name === 'main') {
-          this.windowselect.append(
+          (this.windowselect as JQuery).append(
             `<span title="Destiny GG" data-name="main" class="tab win-main tag-${
               w.tag
             } ${w.visible ? 'active' : ''}"><i class="dgg-icon"></i></span>`
           );
         } else {
-          const conv = this.whispers.get(w.name);
-          this.windowselect.append(`<span title="${w.label}" data-name="${
-            w.name
-          }" class="tab win-${w.name} tag-${w.tag} ${
+          const conv = this.whispers.get(w.name) as ChatWhisper;
+          (this.windowselect as JQuery).append(`<span title="${
+            w.label
+          }" data-name="${w.name}" class="tab win-${w.name} tag-${w.tag} ${
             w.visible ? 'active' : ''
           } ${conv.unread > 0 ? 'unread' : ''}">
                     <span>${w.label}${
@@ -1189,16 +1331,16 @@ class Chat {
       });
     }
 
-    this.windowselect.toggle(this.windows.size > 1);
+    (this.windowselect as JQuery).toggle(this.windows.size > 1);
 
     if (this.mainwindow !== null) this.mainwindow.update();
   }
 
-  censor(nick) {
-    const c = this.mainwindow.getlines(
+  censor(nick: string) {
+    const c = (this.mainwindow as ChatWindow).getlines(
       `.msg-chat[data-username="${nick.toLowerCase()}"]`
     );
-    switch (parseInt(this.settings.get('showremoved') || 1, 10)) {
+    switch ((this.settings.get('showremoved') as number) || 1) {
       case 0: // remove
         c.forEach((line) => line.remove());
         break;
@@ -1209,10 +1351,10 @@ class Chat {
       default:
         break;
     }
-    this.mainwindow.update();
+    (this.mainwindow as ChatWindow).update();
   }
 
-  ignored(nick, text = null) {
+  ignored(nick: string, text: string | null = null) {
     const ignore = this.ignoring.has(nick.toLowerCase());
     if (!ignore && text !== null) {
       return (
@@ -1229,7 +1371,7 @@ class Chat {
     return ignore;
   }
 
-  ignore(nick, ignore = true) {
+  ignore(nick: string, ignore = true) {
     const normalizedNick = nick.toLowerCase();
     const exists = this.ignoring.has(normalizedNick);
     if (ignore && !exists) {
@@ -1253,12 +1395,15 @@ class Chat {
       return;
     }
 
-    if (this.debounceFocus === undefined) {
+    if (this.debounceFocus === null) {
       this.debounceFocus = debounce(10, (c) => c.input.focus(), {
         atBegin: false,
       });
     }
-    if (window.getSelection().isCollapsed && !this.input.is(':focus')) {
+    if (
+      (window.getSelection() as Selection).isCollapsed &&
+      !(this.input as JQuery).is(':focus')
+    ) {
       this.debounceFocus(this);
     }
   }
@@ -1267,12 +1412,12 @@ class Chat {
     const placeholderText = this.authenticated
       ? `Write something ${this.user.username} ...`
       : `Write something ...`;
-    this.input.attr('placeholder', placeholderText);
+    (this.input as JQuery).attr('placeholder', placeholderText);
   }
 
   adjustInputHeight() {
     // Check if the input exists on the page and return if it doesn't.
-    if (this.input.length === 0) {
+    if (!this.input || (this.input as JQuery).length === 0) {
       return;
     }
 
@@ -1296,21 +1441,25 @@ class Chat {
    * EVENTS
    */
 
-  onDISPATCH({ data }) {
+  onDISPATCH(data: unknown) {
     if (typeof data === 'object') {
       let users = [];
       const now = Date.now();
-      if (Object.hasOwn(data, 'nick')) users.push(this.addUser(data));
-      if (Object.hasOwn(data, 'users'))
+      if ((data as ChatWebsocketTypes.IN.SimplifiedUser).nick)
+        users.push(this.addUser(data as ChatWebsocketTypes.IN.SimplifiedUser));
+      if ((data as ChatWebsocketTypes.IN.Names).users) {
         users = users.concat(
-          Array.from(data.users).map((d) => this.addUser(d))
+          Array.from((data as ChatWebsocketTypes.IN.Names).users).map((user) =>
+            this.addUser(user)
+          )
         );
+      }
       users.forEach((u) => this.autocomplete.add(u.nick, false, now));
     }
   }
 
-  onCLOSE(retryMilli) {
-    if (this.chatpoll.isPollStarted()) this.chatpoll.endPoll(); // end poll on disconnect so it is not there forever.
+  onCLOSE(retryMilli: number) {
+    if (this.chatpoll && this.chatpoll.isPollStarted()) this.chatpoll.endPoll(); // end poll on disconnect so it is not there forever.
     if (retryMilli > 0)
       MessageBuilder.error(
         `Disconnected, retry in ${Math.round(retryMilli / 1000)} seconds ...`
@@ -1318,7 +1467,7 @@ class Chat {
     else MessageBuilder.error(`Disconnected.`).into(this);
   }
 
-  onCONNECTING(url) {
+  onCONNECTING(url: string) {
     if (this.authenticated) {
       MessageBuilder.status(
         `Connecting as ${this.user.username} to ${Chat.extractHostname(
@@ -1332,39 +1481,40 @@ class Chat {
     }
   }
 
-  onOPEN() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onOPEN(data: unknown) {
     // MessageBuilder.status(`Connection established.`).into(this)
   }
 
-  onNAMES(data) {
+  onNAMES(data: ChatWebsocketTypes.IN.Names) {
     MessageBuilder.status(
       `Connected. Serving ${data.connectioncount || 0} connections and ${
         data.users.length
       } users.`
     ).into(this);
     if (this.showmotd) {
-      this.cmdHINT([Math.floor(Math.random() * hintstrings.size)]);
+      this.cmdHINT([Math.floor(Math.random() * hintstrings.size).toString()]);
       this.showmotd = false;
     }
   }
 
-  onPIN(msg) {
-    if (this.pinnedMessage?.uuid === msg.uuid) return;
+  onPIN(data: ChatWebsocketTypes.IN.Pin) {
+    if (this.pinnedMessage?.uuid === data.uuid) return;
     this.pinnedMessage?.unpin();
-    if (!msg.data) return;
+    if (!data.data) return;
 
-    const usr = this.users.get(msg.nick.toLowerCase()) ?? new ChatUser(msg);
+    const usr = this.users.get(data.nick.toLowerCase()) ?? new ChatUser(data);
     this.pinnedMessage = MessageBuilder.pinned(
-      msg.data,
+      data.data,
       usr,
-      msg.timestamp,
-      msg.uuid
+      data.timestamp,
+      data.uuid
     )
       .into(this)
-      .pin(this, !checkIfPinWasDismissed(msg.uuid));
+      .pin(this, !checkIfPinWasDismissed(data.uuid));
   }
 
-  onQUIT(data) {
+  onQUIT(data: ChatWebsocketTypes.IN.UserQuit) {
     const normalized = data.nick.toLowerCase();
     if (this.users.has(normalized)) {
       this.users.delete(normalized);
@@ -1372,20 +1522,20 @@ class Chat {
     }
   }
 
-  onMSG(data) {
+  onMSG(data: ChatWebsocketTypes.IN.Message) {
     const textonly = Chat.removeSlashCmdFromText(data.data);
     const usr = this.users.get(data.nick.toLowerCase());
-    const win = this.mainwindow;
+    const win = this.mainwindow as ChatWindow;
     if (
       win.lastmessage !== null &&
       this.emoteService.canUserUseEmote(usr, textonly) &&
       Chat.removeSlashCmdFromText(win.lastmessage.message) === textonly
     ) {
       if (win.lastmessage.type === MessageTypes.EMOTE) {
-        win.lastmessage.incEmoteCount();
-        this.mainwindow.update();
+        (win.lastmessage as ChatEmoteMessage).incEmoteCount();
+        (this.mainwindow as ChatWindow).update();
       } else {
-        win.lastmessage.ui.remove();
+        (win.lastmessage.ui as HTMLDivElement).remove();
         MessageBuilder.emote(textonly, data.timestamp, 2).into(this);
       }
     } else if (!this.resolveMessage(data.nick, data.data)) {
@@ -1393,23 +1543,23 @@ class Chat {
     }
   }
 
-  onPOLLSTART(data) {
-    this.chatpoll.startPoll(data);
+  onPOLLSTART(data: ChatWebsocketTypes.IN.PollStart) {
+    (this.chatpoll as ChatPoll).startPoll(data);
   }
 
   onPOLLSTOP() {
-    this.chatpoll.endPoll();
+    (this.chatpoll as ChatPoll).endPoll();
   }
 
-  onVOTECAST(data) {
+  onVOTECAST(data: ChatWebsocketTypes.IN.VoteCast) {
     const usr = this.users.get(data.nick.toLowerCase());
-    this.chatpoll.castVote(data, usr);
+    (this.chatpoll as ChatPoll).castVote(data, usr);
     if (data.nick.toLowerCase() === this.user.nick.toLowerCase()) {
-      this.chatpoll.markVote(data.vote);
+      (this.chatpoll as ChatPoll).markVote(data.vote);
     }
   }
 
-  onMUTE(data) {
+  onMUTE(data: ChatWebsocketTypes.IN.Mute) {
     // data.data is the nick which has been banned
     if (this.user.username.toLowerCase() === data.data.toLowerCase()) {
       MessageBuilder.command(
@@ -1420,8 +1570,8 @@ class Chat {
       // Every cached mute message calls `onMUTE()`. We perform this check
       // to avoid setting the timer for mutes that have already expired.
       if (isMuteActive(data)) {
-        this.mutedtimer.setTimer(data.duration);
-        this.mutedtimer.startTimer();
+        (this.mutedtimer as MutedTimer).setTimer(data.duration);
+        (this.mutedtimer as MutedTimer).startTimer();
       }
     } else {
       MessageBuilder.command(
@@ -1432,14 +1582,14 @@ class Chat {
     this.censor(data.data);
   }
 
-  onUNMUTE(data) {
+  onUNMUTE(data: ChatWebsocketTypes.IN.Unmute) {
     if (this.user.username.toLowerCase() === data.data.toLowerCase()) {
       MessageBuilder.command(
         `You have been unmuted by ${data.nick}.`,
         data.timestamp
       ).into(this);
 
-      this.mutedtimer.stopTimer();
+      (this.mutedtimer as MutedTimer).stopTimer();
     } else {
       MessageBuilder.command(
         `${data.data} unmuted by ${data.nick}.`,
@@ -1448,7 +1598,7 @@ class Chat {
     }
   }
 
-  onBAN(data) {
+  onBAN(data: ChatWebsocketTypes.IN.Ban) {
     // data.data is the nick which has been banned, no info about duration
     if (this.user.username.toLowerCase() === data.data.toLowerCase()) {
       MessageBuilder.command(
@@ -1465,7 +1615,7 @@ class Chat {
     this.censor(data.data);
   }
 
-  onUNBAN(data) {
+  onUNBAN(data: ChatWebsocketTypes.IN.Unban) {
     if (this.user.username.toLowerCase() === data.data.toLowerCase()) {
       MessageBuilder.command(
         `You have been unbanned by ${data.nick}.`,
@@ -1473,7 +1623,7 @@ class Chat {
       ).into(this);
 
       // Unbanning a user unmutes them, too.
-      this.mutedtimer.stopTimer();
+      (this.mutedtimer as MutedTimer).stopTimer();
     } else {
       MessageBuilder.command(
         `${data.data} unbanned by ${data.nick}.`,
@@ -1483,7 +1633,7 @@ class Chat {
   }
 
   // not to be confused with an error the chat.source may send onSOCKETERROR.
-  onERR(data) {
+  onERR(data: ChatWebsocketTypes.IN.Error) {
     const desc = data.description;
     if (desc === 'toomanyconnections' || desc === 'banned') {
       this.source.retryOnDisconnect = false;
@@ -1506,11 +1656,13 @@ class Chat {
         break;
       }
       case 'muted':
-        this.mutedtimer.setTimer(data.muteTimeLeft);
-        this.mutedtimer.startTimer();
+        (this.mutedtimer as MutedTimer).setTimer(data.muteTimeLeft);
+        (this.mutedtimer as MutedTimer).startTimer();
 
         message = MessageBuilder.error(
-          `You are temporarily muted! You can chat again ${this.mutedtimer.getReadableDuration()}. Subscribe to remove the mute immediately.`
+          `You are temporarily muted! You can chat again ${(
+            this.mutedtimer as MutedTimer
+          ).getReadableDuration()}. Subscribe to remove the mute immediately.`
         );
         break;
       default:
@@ -1520,14 +1672,15 @@ class Chat {
     message.into(this, this.getActiveWindow());
   }
 
-  onSOCKETERROR(/* e */) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onSOCKETERROR(data: unknown) {
     // There is no information on the Error event of the socket.
     // We rely on the socket close event to tell us more about what happened.
     // MessageBuilder.error(errorstrings.get('socketerror')).into(this, this.getActiveWindow())
     // console.error(e)
   }
 
-  onSUBONLY(data) {
+  onSUBONLY(data: ChatWebsocketTypes.IN.SubOnly) {
     this.subonly = data.data === 'on';
     MessageBuilder.command(
       `Subscriber only mode ${this.subonly ? 'enabled' : 'disabled'}${
@@ -1536,18 +1689,18 @@ class Chat {
       data.timestamp
     ).into(this);
     if (this.subonly && !this.user.isSubscriber()) {
-      this.subonlyicon.show();
+      (this.subonlyicon as JQuery).show();
     } else {
-      this.subonlyicon.hide();
+      (this.subonlyicon as JQuery).hide();
     }
   }
 
-  onBROADCAST(data) {
+  onBROADCAST(data: ChatWebsocketTypes.IN.Broadcast) {
     // TODO kind of ... hackey
     if (data.data === 'reload') {
       if (!this.backlogloading) {
         const retryMilli = Math.floor(Math.random() * 30000) + 4000;
-        setTimeout(() => window.location.reload(true), retryMilli);
+        setTimeout(() => window.location.reload(), retryMilli);
         MessageBuilder.broadcast(
           `Restart incoming in ${Math.round(retryMilli / 1000)} seconds ...`
         ).into(this);
@@ -1558,27 +1711,25 @@ class Chat {
   }
 
   onPRIVMSGSENT() {
-    if (this.mainwindow.visible) {
+    if ((this.mainwindow as ChatWindow).visible) {
       MessageBuilder.info('Your message has been sent.').into(this);
     }
   }
 
-  onPRIVMSG(data) {
+  onPRIVMSG(data: ChatWebsocketTypes.IN.PrivateMessage) {
     const normalized = data.nick.toLowerCase();
     if (!this.ignored(normalized, data.data)) {
       if (!this.whispers.has(normalized))
         this.whispers.set(normalized, {
+          id: '',
           nick: data.nick,
           unread: 0,
           open: false,
         });
 
-      const conv = this.whispers.get(normalized);
+      const conv = this.whispers.get(normalized) as ChatWhisper;
       const user = this.users.get(normalized) || new ChatUser(data.nick);
-      const messageid = Object.hasOwn(data, 'messageid')
-        ? data.messageid
-        : null;
-
+      const messageid = data.messageid || null;
       if (this.settings.get('showhispersinchat'))
         MessageBuilder.whisper(
           data.data,
@@ -1592,7 +1743,7 @@ class Chat {
           `${data.nick} whispered ...`,
           data.data,
           data.timestamp,
-          this.settings.get('notificationtimeout')
+          this.settings.get('notificationtimeout') as boolean
         );
 
       const win = this.getWindow(normalized);
@@ -1611,7 +1762,7 @@ class Chat {
         conv.unread += 1;
       }
       this.replyusername = user.username;
-      this.menus.get('whisper-users').redraw();
+      (this.menus.get('whisper-users') as ChatWhisperUsers).redraw();
       this.redrawWindowIndicators();
     }
   }
@@ -1620,7 +1771,7 @@ class Chat {
    * COMMANDS
    */
 
-  cmdSEND(raw) {
+  cmdSEND(raw: string) {
     if (raw !== '') {
       const win = this.getActiveWindow();
       const matches = raw.match(regexslashcmd);
@@ -1635,8 +1786,8 @@ class Chat {
 
         // Clear the input and add to history, before we do the emit
         // This makes it possible for commands to change the input.value, else it would be cleared after the command is run.
-        this.inputhistory.add(raw);
-        this.input.val('');
+        (this.inputhistory as ChatInputHistory).add(raw);
+        (this.input as JQuery).val('');
 
         if (win !== this.mainwindow && normalized !== 'EXIT') {
           MessageBuilder.error(
@@ -1653,26 +1804,27 @@ class Chat {
       }
       // LOGIN
       else if (!this.authenticated) {
-        this.loginscrn.show();
+        (this.loginscrn as JQuery).show();
       }
       // WHISPER
       else if (win !== this.mainwindow) {
         MessageBuilder.message(raw, this.user).into(this, win);
         this.source.send('PRIVMSG', { nick: win.name, data: raw });
-        this.input.val('');
+        (this.input as JQuery).val('');
       }
       // VOTE
       else if (
+        this.chatpoll &&
         this.chatpoll.isPollStarted() &&
         this.chatpoll.isMsgVoteCastFmt(textonly)
       ) {
-        if (this.chatpoll.poll.canVote) {
+        if (this.chatpoll.poll?.canVote) {
           MessageBuilder.info(`Your vote has been cast!`).into(this);
           this.source.send('CASTVOTE', { vote: raw });
-          this.input.val('');
+          (this.input as JQuery).val('');
         } else {
           MessageBuilder.error(`You have already voted!`).into(this);
-          this.input.val('');
+          (this.input as JQuery).val('');
         }
       }
       // EMOTE SPAM
@@ -1682,8 +1834,8 @@ class Chat {
       ) {
         // Its easier to deal with combos with the this.unresolved flow
         this.source.send('MSG', { data: raw });
-        this.inputhistory.add(raw);
-        this.input.val('');
+        (this.inputhistory as ChatInputHistory).add(raw);
+        (this.input as JQuery).val('');
       }
       // MESSAGE
       else {
@@ -1695,21 +1847,21 @@ class Chat {
         const message = MessageBuilder.message(raw, this.user).into(this);
         this.unresolved.unshift(message);
         this.source.send('MSG', { data: raw });
-        this.inputhistory.add(raw);
-        this.input.val('');
+        (this.inputhistory as ChatInputHistory).add(raw);
+        (this.input as JQuery).val('');
       }
     }
   }
 
   cmdSHOWPOLL() {
-    if (this.chatpoll.poll) {
+    if (this.chatpoll && this.chatpoll.poll) {
       this.chatpoll.show();
     } else {
       MessageBuilder.error("There hasn't been a poll yet.").into(this);
     }
   }
 
-  cmdPOLL(parts, command) {
+  cmdPOLL(parts: string[], command: string) {
     const slashCommand = `/${command.toLowerCase()}`;
     const textOnly = parts.join(' ');
 
@@ -1723,12 +1875,12 @@ class Chat {
       return;
     }
 
-    if (this.chatpoll.isPollStarted()) {
+    if (this.chatpoll && this.chatpoll.isPollStarted()) {
       MessageBuilder.error('Poll already started.').into(this);
       return;
     }
 
-    if (!this.chatpoll.hasPermission(this.user)) {
+    if (this.chatpoll && !this.chatpoll.hasPermission(this.user)) {
       MessageBuilder.error('You do not have permission to start a poll.').into(
         this
       );
@@ -1746,11 +1898,11 @@ class Chat {
   }
 
   cmdPOLLSTOP() {
-    if (!this.chatpoll.isPollStarted()) {
+    if (this.chatpoll && !this.chatpoll.isPollStarted()) {
       MessageBuilder.error('No poll started.').into(this);
       return;
     }
-    if (!this.chatpoll.hasPermission(this.user)) {
+    if (this.chatpoll && !this.chatpoll.hasPermission(this.user)) {
       MessageBuilder.error(
         'You do not have permission to stop this poll.'
       ).into(this);
@@ -1776,14 +1928,14 @@ class Chat {
     MessageBuilder.info(str).into(this);
   }
 
-  cmdHINT(parts) {
+  cmdHINT(parts: string[]) {
     const arr = [...hintstrings];
     const i = parts && parts[0] ? parseInt(parts[0], 10) - 1 : -1;
     if (i > 0 && i < hintstrings.size) {
       MessageBuilder.info(arr[i][1]).into(this);
     } else {
       if (
-        this.lasthintindex === undefined ||
+        this.lasthintindex === null ||
         this.lasthintindex === arr.length - 1
       ) {
         this.lasthintindex = 0;
@@ -1794,7 +1946,7 @@ class Chat {
     }
   }
 
-  cmdIGNORE(parts) {
+  cmdIGNORE(parts: string[]) {
     if (!parts[0]) {
       if (this.ignoring.size <= 0) {
         MessageBuilder.info('Your ignore list is empty.').into(this);
@@ -1816,7 +1968,7 @@ class Chat {
     } else {
       // this is a little ugly, but it allows us to not ignore anything if there's an invalid nick in there
       // think that's less confusing/nicer compared to partially ignoring
-      const validUsernames = new Set();
+      const validUsernames = new Set<string>();
       // .some() stops iterating over the array if the inner function returns true
       // which is perfect for our use case
       const failure = parts.some((username) => {
@@ -1846,10 +1998,10 @@ class Chat {
     }
   }
 
-  cmdUNIGNORE(parts) {
+  cmdUNIGNORE(parts: string[]) {
     if (parts.length > 0) {
       // see comment in cmdIGNORE for explanation
-      const validUsernames = new Set();
+      const validUsernames = new Set<string>();
       const failure = parts.some((username) => {
         if (!nickregex.test(username)) {
           MessageBuilder.info(
@@ -1878,7 +2030,7 @@ class Chat {
     }
   }
 
-  cmdUNIGNOREALL(parts) {
+  cmdUNIGNOREALL(parts: string[]) {
     const confirmation = parts[0] || null;
     if (
       !confirmation ||
@@ -1894,7 +2046,7 @@ class Chat {
     }
   }
 
-  cmdMUTE(parts) {
+  cmdMUTE(parts: string[]) {
     if (parts.length === 0) {
       MessageBuilder.info(`Usage: /mute <nick> [<time>].`).into(this);
     } else if (!nickregex.test(parts[0])) {
@@ -1909,7 +2061,7 @@ class Chat {
     }
   }
 
-  cmdBAN(parts, command) {
+  cmdBAN(parts: string[], command: string) {
     if (parts.length === 0 || parts.length < 3) {
       MessageBuilder.info(
         `Usage: /${command} <nick> <time> <reason> (time can be 'permanent').`
@@ -1919,7 +2071,7 @@ class Chat {
     } else if (!parts[2]) {
       MessageBuilder.error('Providing a reason is mandatory.').into(this);
     } else {
-      const payload = {
+      const payload: ChatWebsocketTypes.OUT.Ban = {
         nick: parts[0],
         reason: parts.slice(2, parts.length).join(' '),
       };
@@ -1932,7 +2084,7 @@ class Chat {
     }
   }
 
-  cmdUNBAN(parts, command) {
+  cmdUNBAN(parts: string[], command: string) {
     if (parts.length === 0) {
       MessageBuilder.info(`Usage: /${command} <nick>.`).into(this);
     } else if (!nickregex.test(parts[0])) {
@@ -1942,7 +2094,7 @@ class Chat {
     }
   }
 
-  cmdSUBONLY(parts, command) {
+  cmdSUBONLY(parts: string[], command: string) {
     if (/on|off/i.test(parts[0])) {
       this.source.send(command.toUpperCase(), { data: parts[0].toLowerCase() });
     } else {
@@ -1952,7 +2104,7 @@ class Chat {
     }
   }
 
-  cmdMAXLINES(parts, command) {
+  cmdMAXLINES(parts: string[], command: string) {
     if (parts.length === 0) {
       MessageBuilder.info(
         `Maximum lines stored: ${this.settings.get('maxlines')}.`
@@ -1971,8 +2123,8 @@ class Chat {
     }
   }
 
-  cmdHIGHLIGHT(parts, command) {
-    const highlights = this.settings.get('highlightnicks');
+  cmdHIGHLIGHT(parts: string[], command: string) {
+    const highlights = this.settings.get('highlightnicks') as string[];
     if (parts.length === 0) {
       if (highlights.length > 0)
         MessageBuilder.info(
@@ -2004,7 +2156,7 @@ class Chat {
     this.applySettings();
   }
 
-  cmdTIMESTAMPFORMAT(parts) {
+  cmdTIMESTAMPFORMAT(parts: string[]) {
     if (parts.length === 0) {
       MessageBuilder.info(
         `Current format: ${this.settings.get(
@@ -2025,11 +2177,11 @@ class Chat {
     }
   }
 
-  cmdBROADCAST(parts) {
+  cmdBROADCAST(parts: string[]) {
     this.source.send('BROADCAST', { data: parts.join(' ') });
   }
 
-  cmdWHISPER(parts) {
+  cmdWHISPER(parts: string[]) {
     if (!parts[0] || !nickregex.test(parts[0])) {
       MessageBuilder.error('Invalid nick - /msg nick message').into(this);
     } else if (parts[0].toLowerCase() === this.user.username.toLowerCase()) {
@@ -2041,11 +2193,11 @@ class Chat {
     }
   }
 
-  cmdCONNECT(parts) {
+  cmdCONNECT(parts: string[]) {
     this.source.connect(parts[0]);
   }
 
-  cmdTAG(parts) {
+  cmdTAG(parts: string[]) {
     if (parts.length === 0) {
       if (this.taggednicks.size > 0) {
         let tags = 'Tagged nicks\n\n';
@@ -2099,7 +2251,7 @@ class Chat {
       color = tagcolors[Math.floor(Math.random() * tagcolors.length)];
     }
 
-    this.mainwindow
+    (this.mainwindow as ChatWindow)
       .getlines(`.msg-user[data-username="${n}"]`)
       .forEach((line) => {
         const classesToRemove = Chat.removeClasses(
@@ -2112,7 +2264,7 @@ class Chat {
         ['msg-tagged', `msg-tagged-${color}`].forEach((tag) =>
           line.classList.add(tag)
         );
-        line.querySelector('.user').title = note;
+        (line.querySelector('.user') as HTMLDivElement).title = note;
       });
 
     this.taggednicks.set(n, color);
@@ -2123,7 +2275,7 @@ class Chat {
     MessageBuilder.info(`Tagged ${parts[0]} as ${color}.`).into(this);
   }
 
-  cmdUNTAG(parts) {
+  cmdUNTAG(parts: string[]) {
     if (parts.length === 0) {
       if (this.taggednicks.size > 0) {
         let tags = 'Tagged nicks\n\n';
@@ -2148,7 +2300,7 @@ class Chat {
     }
     const n = parts[0].toLowerCase();
 
-    this.mainwindow
+    (this.mainwindow as ChatWindow)
       .getlines(`.msg-user[data-username="${n}"]`)
       .forEach((line) => {
         const classesToRemove = Chat.removeClasses(
@@ -2158,7 +2310,9 @@ class Chat {
         classesToRemove.forEach((className) =>
           line.classList.remove(className)
         );
-        line.querySelector('.user').removeAttribute('title');
+        (line.querySelector('.user') as HTMLDivElement).removeAttribute(
+          'title'
+        );
       });
 
     this.taggednicks.delete(n);
@@ -2169,19 +2323,19 @@ class Chat {
     MessageBuilder.info(`Un-tagged ${n}.`).into(this);
   }
 
-  cmdEMBED(parts) {
+  cmdEMBED(parts: string[]) {
     const { location } = window.top || window.parent || window;
     try {
       location.hash = this.hashLinkConverter.convert(parts[0]);
-    } catch (error) {
-      MessageBuilder.error(error.message).into(this);
+    } catch (error: unknown) {
+      MessageBuilder.error((error as Error).message).into(this);
       MessageBuilder.info(
         'Usage: /embed <link> OR /e <link> (Valid links: Twitch streams, VODs, clips, Youtube, Rumble)'
       ).into(this);
     }
   }
 
-  cmdPOSTEMBED(parts) {
+  cmdPOSTEMBED(parts: string[]) {
     const { location } = window.top || window.parent || window;
     try {
       const hashLink = this.hashLinkConverter.convert(parts[0]);
@@ -2194,10 +2348,10 @@ class Chat {
           data: `${location.hash} ${parts.join(' ')}`,
         });
       } else {
-        if (error.message === MISSING_ARG_ERROR) {
+        if ((error as Error).message === MISSING_ARG_ERROR) {
           MessageBuilder.error('Nothing embedded').into(this);
         } else {
-          MessageBuilder.error(error.message).into(this);
+          MessageBuilder.error((error as Error).message).into(this);
         }
         MessageBuilder.info(
           'Usage: /postembed [<link>] [<message>] (Alias: /pe) (Valid links: Twitch streams, VODs, clips, Youtube, Rumble)'
@@ -2249,7 +2403,7 @@ class Chat {
       );
   }
 
-  cmdOPEN(parts) {
+  cmdOPEN(parts: string[]) {
     if (!parts[0]) {
       MessageBuilder.error(
         'No username specified - /open <username> OR /o <username>'
@@ -2264,12 +2418,15 @@ class Chat {
       if (win !== (null || undefined)) {
         this.windowToFront(normalized);
       } else {
-        if (!this.whispers.has(normalized))
-          this.whispers.set(normalized, {
+        if (!this.whispers.has(normalized)) {
+          const whisper: ChatWhisper = {
+            id: 'null',
             nick: normalized,
             unread: 0,
             open: false,
-          });
+          };
+          this.whispers.set(normalized, whisper);
+        }
         this.openConversation(normalized);
       }
     } else {
@@ -2282,7 +2439,7 @@ class Chat {
   cmdEXIT() {
     const win = this.getActiveWindow();
     if (win !== this.mainwindow) {
-      this.windowToFront(this.mainwindow.name);
+      this.windowToFront((this.mainwindow as ChatWindow).name);
       this.removeWindow(win.name);
     }
   }
@@ -2300,12 +2457,12 @@ class Chat {
     if (username === null) {
       MessageBuilder.info(`No one to reply to. :(`).into(this);
     } else {
-      this.input.val(`/w ${username} `);
+      (this.input as JQuery).val(`/w ${username} `);
     }
-    this.input.focus();
+    (this.input as JQuery).trigger('focus');
   }
 
-  cmdSTALK(parts) {
+  cmdSTALK(parts: string[]) {
     if (!this.config.stalkEnabled) {
       MessageBuilder.error('The `/stalk` command is disabled.').into(this);
       return;
@@ -2340,7 +2497,7 @@ class Chat {
       { credentials: 'include' }
     )
       .then((res) => res.json())
-      .then((d) => {
+      .then((d: WebsiteApiTypes.Stalk) => {
         if (!d || !d.lines || d.lines.length === 0) {
           MessageBuilder.info(`No messages from ${parts[0]}.`).into(this);
         } else {
@@ -2371,7 +2528,7 @@ class Chat {
       });
   }
 
-  cmdMENTIONS(parts) {
+  cmdMENTIONS(parts: string[]) {
     if (!this.config.mentionsEnabled) {
       MessageBuilder.error('The `/mentions` command is disabled.').into(this);
       return;
@@ -2413,7 +2570,7 @@ class Chat {
       { credentials: 'include' }
     )
       .then((res) => res.json())
-      .then((d) => {
+      .then((d: WebsiteApiTypes.Mention[]) => {
         if (!d || d.length === 0) {
           MessageBuilder.info(`No mentions for ${parts[0]}.`).into(this);
         } else {
@@ -2444,7 +2601,7 @@ class Chat {
       });
   }
 
-  cmdHOST(parts) {
+  cmdHOST(parts: string[]) {
     const displayName = parts[1];
     let url = parts[0];
 
@@ -2508,7 +2665,7 @@ class Chat {
       });
   }
 
-  cmdPIN(parts) {
+  cmdPIN(parts: string[]) {
     if (!parts.length) {
       MessageBuilder.error('No message provided - /pin <message>').into(this);
       return;
@@ -2520,7 +2677,7 @@ class Chat {
     this.source.send('PIN', { data: '' });
   }
 
-  openConversation(nick) {
+  openConversation(nick: string) {
     const normalized = nick.toLowerCase();
     const conv = this.whispers.get(normalized);
     if (conv) {
@@ -2529,12 +2686,12 @@ class Chat {
         this.createConversation(conv, nick, normalized);
       }
       this.windowToFront(normalized);
-      this.menus.get('whisper-users').redraw();
-      this.input.focus();
+      (this.menus.get('whisper-users') as ChatWhisperUsers).redraw();
+      (this.input as JQuery).trigger('focus');
     }
   }
 
-  createConversation(conv, nick, normalized) {
+  createConversation(conv: ChatWhisper, nick: string, normalized: string) {
     const user = this.users.get(normalized) || new ChatUser(nick);
     const win = new ChatWindow(
       normalized,
@@ -2553,7 +2710,7 @@ class Chat {
           { credentials: 'include' }
         )
           .then((res) => res.json())
-          .then((data) => {
+          .then((data: WebsiteApiTypes.WhisperMessage[]) => {
             if (data.length > 0) {
               const date = moment(data[0].timestamp).format(DATE_FORMATS.FULL);
               MessageBuilder.info(`Last message ${date}.`).into(this, win);
@@ -2592,28 +2749,33 @@ class Chat {
     });
   }
 
-  static removeSlashCmdFromText(msg) {
+  static removeSlashCmdFromText(msg: string) {
     return msg.replace(regexslashcmd, '').trim();
   }
 
-  static extractNicks(text) {
+  static extractNicks(text: string) {
     const uniqueNicks = new Set(text.match(nickmessageregex));
     return [...uniqueNicks];
   }
 
-  static removeClasses(search, classList) {
+  static removeClasses(search: string, classList: string) {
     return (
       classList.match(new RegExp(`\\b${search}(?:[A-z-]+)?\\b`, 'g')) || []
     );
   }
 
-  static isArraysEqual(a, b) {
+  static isArraysEqual(a: unknown[], b: unknown[]) {
     return !a || !b
       ? a.length !== b.length || a.sort().toString() !== b.sort().toString()
       : false;
   }
 
-  static showNotification(title, message, timestamp, timeout = false) {
+  static showNotification(
+    title: string,
+    message: string,
+    timestamp: number,
+    timeout = false
+  ) {
     if (Notification.permission === 'granted') {
       const n = new Notification(title, {
         body: message,
@@ -2625,7 +2787,7 @@ class Chat {
     }
   }
 
-  static parseTimeInterval(str) {
+  static parseTimeInterval(str: string) {
     let nanoseconds = 0;
     const units = {
       s: 1000000000,
@@ -2650,15 +2812,19 @@ class Chat {
       day: 86400000000000,
       days: 86400000000000,
     };
-    str.replace(regextime, ($0, number, unit) => {
+    str.replace(regextime, ($0: string, number: number, unit: string) => {
       const addNs =
-        number * (unit ? units[unit.toLowerCase()] || units.s : units.s);
+        number *
+        (unit
+          ? units[unit.toLowerCase() as keyof typeof units] ?? units.s
+          : units.s);
       nanoseconds += addNs;
+      return '';
     });
     return nanoseconds;
   }
 
-  static loadCss(url) {
+  static loadCss(url: string) {
     const link = document.createElement('link');
     link.href = url;
     link.type = 'text/css';
@@ -2668,16 +2834,16 @@ class Chat {
     return link;
   }
 
-  static reqParam(name) {
+  static reqParam(name: string) {
     const sanitizedName = name.replace(/[[\]]/g, '\\$&');
-    const url = window.location || window.location.href || null;
+    const url = window.location ? window.location.href : '';
     const regex = new RegExp(`[?&]${sanitizedName}(=([^&#]*)|&|#|$)`);
     const results = regex.exec(url);
     if (!results || !results[2]) return null;
     return decodeURIComponent(results[2].replace(/\+/g, ' '));
   }
 
-  static extractHostname(url) {
+  static extractHostname(url: string) {
     let hostname =
       url.indexOf('://') > -1 ? url.split('/')[2] : url.split('/')[0];
     hostname = hostname.split(':')[0];
