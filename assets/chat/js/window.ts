@@ -2,6 +2,8 @@ import $ from 'jquery';
 import { throttle } from 'throttle-debounce';
 import ChatScrollPlugin from './scroll';
 import EventEmitter from './emitter';
+import Chat from './chat';
+import ChatUIMessage from './messages/ChatUIMessage';
 
 const tagcolors = [
   'green',
@@ -15,7 +17,19 @@ const tagcolors = [
 ];
 
 class ChatWindow extends EventEmitter {
-  constructor(name, type = '', label = '') {
+  name: string;
+  label: string;
+  maxlines: number;
+  linecount: number;
+  locks: number;
+  scrollplugin: ChatScrollPlugin | null;
+  visible: boolean;
+  tag: string | null;
+  lastmessage: ChatUIMessage | null;
+  ui: JQuery;
+  lines: HTMLDivElement;
+
+  constructor(name: string, type = '', label = '') {
     super();
     this.name = name;
     this.label = label;
@@ -32,26 +46,32 @@ class ChatWindow extends EventEmitter {
         `<div class="chat-scroll-notify">More messages below</div>` +
         `</div>`
     );
-    this.lines = this.ui.get(0).querySelector('.chat-lines');
+    this.lines = (this.ui.get(0) as HTMLDivElement).querySelector(
+      '.chat-lines'
+    ) as HTMLDivElement;
   }
 
   destroy() {
     this.ui.remove();
-    this.scrollplugin.destroy();
+    if (this.scrollplugin) {
+      this.scrollplugin.destroy();
+    }
     return this;
   }
 
-  into(chat) {
+  into(chat: Chat) {
     const normalized = this.name.toLowerCase();
-    this.maxlines = chat.settings.get('maxlines');
+    this.maxlines = chat.settings.get('maxlines') as number;
     this.scrollplugin = new ChatScrollPlugin(
       this.lines,
-      this.lines.parentElement
+      this.lines.parentElement as HTMLDivElement
     );
     this.tag =
       chat.taggednicks.get(normalized) ||
       tagcolors[Math.floor(Math.random() * tagcolors.length)];
-    chat.output.append(this.ui);
+    if (chat.output) {
+      chat.output.append(this.ui);
+    }
     chat.addWindow(normalized, this);
     return this;
   }
@@ -72,8 +92,8 @@ class ChatWindow extends EventEmitter {
     }
   }
 
-  addMessage(chat, message) {
-    message.ui = message.html(chat);
+  addMessage(chat: Chat, message: ChatUIMessage) {
+    message.ui = message.html(chat) as HTMLDivElement;
     message.afterRender(chat);
     this.lastmessage = message;
     this.lines.append(message.ui);
@@ -81,11 +101,11 @@ class ChatWindow extends EventEmitter {
     this.cleanupThrottle();
   }
 
-  getlines(sel) {
+  getlines(sel: string) {
     return this.lines.querySelectorAll(sel);
   }
 
-  removelines(sel) {
+  removelines(sel: string) {
     const remove = this.lines.querySelectorAll(sel);
     this.linecount -= remove.length;
     remove.forEach((element) => {
@@ -93,14 +113,16 @@ class ChatWindow extends EventEmitter {
     });
   }
 
-  update(forcePin) {
-    this.scrollplugin.update(forcePin);
+  update(forcePin: boolean) {
+    if (this.scrollplugin) {
+      this.scrollplugin.update(forcePin);
+    }
   }
 
   // Rid excess chat lines if the chat is pinned
   // Get the scroll position before adding the new line / removing old lines
   cleanup() {
-    if (this.scrollplugin.wasPinned) {
+    if (this.scrollplugin && this.scrollplugin.wasPinned) {
       const lines = [...this.lines.children];
       if (lines.length >= this.maxlines) {
         const remove = lines.slice(0, lines.length - this.maxlines);

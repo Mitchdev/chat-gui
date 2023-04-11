@@ -9,14 +9,25 @@ const isTouchDevice =
   navigator.maxTouchPoints; // works on IE10/11 and Surface
 
 class ChatScrollPlugin {
-  constructor(viewport, target = undefined) {
-    this.viewport = $(viewport).get(0);
-    if (!this.viewport) return;
-    this.target = $(target) ?? $(viewport);
+  viewport: HTMLDivElement | null;
+  target: JQuery;
+  scroller: OverlayScrollbars;
+  wasPinned: boolean;
+  resizeObserver: ResizeObserver | null;
+
+  constructor(viewport: HTMLDivElement, target: HTMLDivElement | null = null) {
+    this.resizeObserver = null;
+    this.viewport = $(viewport).get(0) as HTMLDivElement | null;
+
+    if (target == null) {
+      this.target = $(viewport);
+    } else {
+      this.target = $(target);
+    }
 
     this.scroller = OverlayScrollbars(
       {
-        target: this.target.get(0),
+        target: this.target.get(0) as HTMLDivElement,
         elements: {
           viewport: this.viewport,
         },
@@ -34,8 +45,8 @@ class ChatScrollPlugin {
       }
     );
 
+    this.wasPinned = true;
     if (this.target.find('.chat-scroll-notify').length > 0) {
-      this.wasPinned = true;
       this.setupResize();
 
       this.scroller.on('scroll', () => {
@@ -68,20 +79,27 @@ class ChatScrollPlugin {
       }
       onResizeComplete();
     });
-    this.resizeObserver.observe(this.viewport);
+    if (this.viewport) {
+      this.resizeObserver.observe(this.viewport);
+    }
   }
 
   get pinned() {
     // 30 is used to allow the scrollbar to be just offset, but still count as scrolled to bottom
-    const { scrollTop, scrollHeight, clientHeight } = this.viewport;
-    return scrollTop >= scrollHeight - clientHeight - 30;
+    if (this.viewport) {
+      const { scrollTop, scrollHeight, clientHeight } = this.viewport;
+      return scrollTop >= scrollHeight - clientHeight - 30;
+    }
+    return true;
   }
 
   scrollBottom() {
-    this.viewport.scrollTo(0, this.viewport.scrollHeight);
+    if (this.viewport) {
+      this.viewport.scrollTo(0, this.viewport.scrollHeight);
+    }
   }
 
-  update(forcePin) {
+  update(forcePin: boolean) {
     if (this.wasPinned || forcePin) this.scrollBottom();
   }
 

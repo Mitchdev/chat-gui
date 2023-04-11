@@ -1,7 +1,7 @@
-interface UserObject {
+interface ChatUserObject {
   nick: string;
   createdDate: string;
   features: Array<string>;
 }
 
-export default UserObject;
+export default ChatUserObject;

@@ -41,6 +41,7 @@ module.exports = {
           '`with` is disallowed in strict mode because it makes code impossible to predict and optimize.',
       },
     ],
+    'import/no-cycle': 'off',
     'import/extensions': [
       'error',
       'ignorePackages',

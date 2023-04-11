@@ -1,4 +1,4 @@
-import UserObject from './types/UserObject';
+import ChatUserObject from './types/ChatUserObject';
 import UserFeature from './features';
 
 class ChatUser {
@@ -7,7 +7,7 @@ class ChatUser {
   createdDate: string;
   features: string[];
 
-  constructor(data: string | UserObject) {
+  constructor(data: string | ChatUserObject) {
     if (typeof data === 'string') {
       this.nick = data;
       this.username = data;
