@@ -3,6 +3,7 @@ import { throttle } from 'throttle-debounce';
 import ChatMessage from './ChatMessage';
 import MessageTypes from './MessageTypes';
 import { EmoteFormatter } from '../formatters';
+import Chat from '../chat';
 
 // eslint-disable-next-line no-use-before-define
 function ChatEmoteMessageCount(message: ChatEmoteMessage) {
@@ -46,7 +47,7 @@ export default class ChatEmoteMessage extends ChatMessage {
     this.combo_txt = null;
   }
 
-  html(chat = null) {
+  html(chat: Chat | null = null) {
     this.text = $(
       `<span class="text">${this.emoteFormatter.format(
         chat,
