@@ -1,9 +1,16 @@
+import Chat from './chat';
 import { KEYCODES, isKeyCode } from './const';
 import ChatStore from './store';
 
 class ChatInputHistory {
-  constructor(chat) {
-    this.input = chat.input;
+  input: JQuery;
+  history: string[];
+  index: number;
+  lastinput: string;
+  maxentries: number;
+
+  constructor(chat: Chat) {
+    this.input = chat.input as JQuery;
     this.history = ChatStore.read('chat.history') || [];
     this.index = -1;
     this.lastinput = '';
@@ -24,7 +31,7 @@ class ChatInputHistory {
     });
   }
 
-  show(direction) {
+  show(direction: number) {
     // const dir = direction === -1 ? 'UP':'DOWN';
     // console.debug(`Show ${dir}(${direction}) index ${this.index} total ${this.history.length}`);
     // if we are not currently showing any lines from the history
@@ -35,7 +42,7 @@ class ChatInputHistory {
         // that's done later
         this.index = this.history.length;
         // store the typed in message so that we can go back to it
-        this.lastinput = this.input.val().toString();
+        this.lastinput = this.input.val() as string;
 
         if (this.index <= 0)
           // nothing in the history, bail out
@@ -60,7 +67,7 @@ class ChatInputHistory {
     this.input.val(val);
   }
 
-  add(message) {
+  add(message: string) {
     this.index = -1;
     // dont add entry if the last entry is the same
     if (

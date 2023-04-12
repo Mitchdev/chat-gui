@@ -1536,7 +1536,7 @@ class Chat {
     const win = this.mainwindow as ChatWindow;
     if (
       win.lastmessage !== null &&
-      this.emoteService.canUserUseEmote(usr, textonly) &&
+      this.emoteService.canUserUseEmote(usr as ChatUser, textonly) &&
       Chat.removeSlashCmdFromText(win.lastmessage.message) === textonly
     ) {
       if (win.lastmessage.type === MessageTypes.EMOTE) {
@@ -1563,9 +1563,9 @@ class Chat {
 
   onVOTECAST(data: ChatWebsocketTypes.IN.VoteCast) {
     const usr = this.users.get(data.nick.toLowerCase());
-    (this.chatpoll as ChatPoll).castVote(data, usr);
+    (this.chatpoll as ChatPoll).castVote(data, usr as ChatUser);
     if (data.nick.toLowerCase() === this.user.nick.toLowerCase()) {
-      (this.chatpoll as ChatPoll).markVote(data.vote);
+      (this.chatpoll as ChatPoll).markVote(parseInt(data.vote, 10));
     }
   }
 

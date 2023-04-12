@@ -1,7 +1,12 @@
 import $ from 'jquery';
 import { throttle } from 'throttle-debounce';
+import Chat from './chat';
 import UserFeatures from './features';
 import { MessageBuilder } from './messages';
+import { ChatWebsocketTypes, Poll } from './types';
+import { PollType } from './types/Poll';
+import ChatUser from './user';
+import ChatWindow from './window';
 
 const POLL_CONJUNCTION = /\bor\b/i;
 const POLL_INTERROGATIVE = /^(how|why|when|what|where)\b/i;
@@ -11,12 +16,7 @@ const POLL_MAX_TIME = 10 * 60 * 1000;
 const POLL_MIN_TIME = 5000;
 const POLL_END_TIME = 7000;
 
-const PollType = {
-  Normal: 0,
-  Weighted: 1,
-};
-
-function parseQuestion(msg) {
+function parseQuestion(msg: string) {
   if (msg.indexOf('?') === -1) {
     throw new Error('Must contain a ?');
   }
@@ -31,7 +31,8 @@ function parseQuestion(msg) {
   }
   return { question, options: ['Yes', 'No'] };
 }
-function parseQuestionAndTime(rawQuestion) {
+
+function parseQuestionAndTime(rawQuestion: string) {
   let questionTime;
   const match = rawQuestion.match(POLL_TIME);
   if (match && match[0]) {
@@ -57,23 +58,47 @@ function parseQuestionAndTime(rawQuestion) {
 }
 
 class ChatPoll {
-  constructor(chat) {
+  chat: Chat;
+  ui: JQuery & {
+    title: JQuery;
+    votes: JQuery;
+    question: JQuery;
+    options: JQuery;
+    timer: JQuery;
+    endmsg: JQuery;
+  };
+
+  poll: Poll | null;
+  voting: boolean;
+  hidden: boolean;
+  timerHidePoll: NodeJS.Timeout | null;
+
+  throttleVoteCast: throttle<() => void>;
+
+  constructor(chat: Chat) {
     this.chat = chat;
-    this.ui = this.chat.ui.find('#chat-poll-frame');
-    this.ui.title = this.ui.find('.poll-info');
-    this.ui.votes = this.ui.find('.poll-votes');
-    this.ui.question = this.ui.find('.poll-question');
-    this.ui.options = this.ui.find('.poll-options');
-    this.ui.timer = this.ui.find('.poll-timer-inner');
-    this.ui.endmsg = this.ui.find('.poll-end');
+    this.ui = (this.chat.ui as JQuery).find('#chat-poll-frame') as JQuery & {
+      title: JQuery;
+      votes: JQuery;
+      question: JQuery;
+      options: JQuery;
+      timer: JQuery;
+      endmsg: JQuery;
+    };
+    this.ui.title = this.ui.find('.poll-info') as JQuery;
+    this.ui.votes = this.ui.find('.poll-votes') as JQuery;
+    this.ui.question = this.ui.find('.poll-question') as JQuery;
+    this.ui.options = this.ui.find('.poll-options') as JQuery;
+    this.ui.timer = this.ui.find('.poll-timer-inner') as JQuery;
+    this.ui.endmsg = this.ui.find('.poll-end') as JQuery;
     this.poll = null;
     this.voting = false;
     this.hidden = true;
-    this.timerHidePoll = -1;
+    this.timerHidePoll = null;
     this.ui.on('click touch', '.poll-close', () => this.hide());
     this.ui.on('click touch', '.opt', (e) => {
       if (this.voting) {
-        if (this.poll.canVote) {
+        if ((this.poll as Poll).canVote) {
           this.chat.source.send('CASTVOTE', {
             vote: `${$(e.currentTarget).index() + 1}`,
           });
@@ -91,7 +116,7 @@ class ChatPoll {
     if (!this.hidden) {
       this.hidden = true;
       this.ui.removeClass('active');
-      this.chat.mainwindow.update();
+      (this.chat.mainwindow as ChatWindow).update();
     }
   }
 
@@ -99,7 +124,7 @@ class ChatPoll {
     if (this.hidden) {
       this.hidden = false;
       this.ui.addClass('active');
-      this.chat.mainwindow.update();
+      (this.chat.mainwindow as ChatWindow).update();
     }
   }
 
@@ -107,7 +132,7 @@ class ChatPoll {
     return this.voting;
   }
 
-  hasPermission(user) {
+  hasPermission(user: ChatUser) {
     return user.hasAnyFeatures(
       UserFeatures.ADMIN,
       UserFeatures.BOT,
@@ -115,40 +140,29 @@ class ChatPoll {
     );
   }
 
-  isMsgVoteCastFmt(txt) {
+  isMsgVoteCastFmt(txt: string) {
     if (txt.match(/^[0-9]+$/i)) {
       const int = parseInt(txt, 10);
-      return int > 0 && int <= this.poll.options.length;
+      return int > 0 && int <= (this.poll as Poll).options.length;
     }
     return false;
   }
 
-  castVote(data, user) {
+  castVote(data: ChatWebsocketTypes.IN.VoteCast, user: ChatUser) {
     const votes = this.votesForUser(user);
-    this.poll.totals[data.vote - 1] += votes;
-    this.poll.votesCast += votes;
-    this.throttleVoteCast(data.vote);
+    (this.poll as Poll).totals[parseInt(data.vote, 10) - 1] += votes;
+    (this.poll as Poll).votesCast += votes;
+    this.throttleVoteCast();
   }
 
-  votesForUser(user) {
-    switch (this.poll.type) {
+  votesForUser(user: ChatUser) {
+    switch ((this.poll as Poll).type) {
       case PollType.Weighted:
-        if (user.hasFeature(UserFeatures.SUB_TIER_5)) {
-          return 32;
-        }
-        if (user.hasFeature(UserFeatures.SUB_TIER_4)) {
-          return 16;
-        }
-        if (user.hasFeature(UserFeatures.SUB_TIER_3)) {
-          return 8;
-        }
-        if (user.hasFeature(UserFeatures.SUB_TIER_2)) {
-          return 4;
-        }
-        if (user.hasFeature(UserFeatures.SUB_TIER_1)) {
-          return 2;
-        }
-
+        if (user.hasFeature(UserFeatures.SUB_TIER_5)) return 32;
+        if (user.hasFeature(UserFeatures.SUB_TIER_4)) return 16;
+        if (user.hasFeature(UserFeatures.SUB_TIER_3)) return 8;
+        if (user.hasFeature(UserFeatures.SUB_TIER_2)) return 4;
+        if (user.hasFeature(UserFeatures.SUB_TIER_1)) return 2;
         return 1;
       case PollType.Normal:
       default:
@@ -156,9 +170,9 @@ class ChatPoll {
     }
   }
 
-  startPoll(data) {
+  startPoll(data: ChatWebsocketTypes.IN.PollStart) {
     this.voting = true;
-    clearTimeout(this.timerHidePoll);
+    clearTimeout(this.timerHidePoll as NodeJS.Timeout);
 
     this.poll = {
       canVote: data.canvote,
@@ -225,11 +239,11 @@ class ChatPoll {
 
   endPoll() {
     this.voting = false;
-    clearTimeout(this.timerHidePoll);
+    clearTimeout(this.timerHidePoll as NodeJS.Timeout);
     this.markWinner();
     this.ui.timer.parent().hide();
     this.ui.endmsg
-      .text(`Poll ended! ${this.poll.votesCast} votes cast.`)
+      .text(`Poll ended! ${(this.poll as Poll).votesCast} votes cast.`)
       .show();
     this.ui.addClass('poll-completed');
     this.timerHidePoll = setTimeout(() => this.hide(), POLL_END_TIME);
@@ -238,7 +252,7 @@ class ChatPoll {
   markWinner() {
     $('.opt-winner').removeClass('opt-winner');
 
-    const winnerIndex = this.poll.totals.reduce(
+    const winnerIndex = (this.poll as Poll).totals.reduce(
       (max, x, i, arr) => (x > arr[max] ? i : max),
       0
     );
@@ -251,8 +265,8 @@ class ChatPoll {
     );
   }
 
-  markVote(opt) {
-    this.poll.canVote = false;
+  markVote(opt: number) {
+    (this.poll as Poll).canVote = false;
     this.ui.options
       .children()
       .eq(opt - 1)
@@ -261,10 +275,18 @@ class ChatPoll {
 
   updateTimer() {
     let remaining =
-      this.poll.time -
-      (new Date().getTime() + this.poll.offset - this.poll.start.getTime());
-    remaining = Math.max(0, Math.floor(Math.min(remaining, this.poll.time)));
-    const percentage = Math.max(0, (remaining / this.poll.time) * 100 - 1);
+      (this.poll as Poll).time -
+      (new Date().getTime() +
+        (this.poll as Poll).offset -
+        (this.poll as Poll).start.getTime());
+    remaining = Math.max(
+      0,
+      Math.floor(Math.min(remaining, (this.poll as Poll).time))
+    );
+    const percentage = Math.max(
+      0,
+      (remaining / (this.poll as Poll).time) * 100 - 1
+    );
     this.ui.timer.css('width', `${percentage}%`);
     this.ui.timer.css('transition', `width ${remaining - 1}ms linear`);
     setTimeout(() => this.ui.timer.css('width', '0%'), 1);
@@ -272,10 +294,11 @@ class ChatPoll {
 
   updateBars() {
     if (this.voting) {
-      this.poll.options.forEach((_, i) => {
+      (this.poll as Poll).options.forEach((_, i) => {
         const percent =
-          this.poll.votesCast > 0
-            ? (this.poll.totals[i] / this.poll.votesCast) * 100
+          (this.poll as Poll).votesCast > 0
+            ? ((this.poll as Poll).totals[i] / (this.poll as Poll).votesCast) *
+              100
             : 0;
 
         this.ui.options.children().eq(i).attr('data-percentage', `${percent}`);
@@ -290,19 +313,23 @@ class ChatPoll {
           .children()
           .eq(i)
           .find('.opt-bar-value')
-          .text(`${Math.round(percent)}% (${this.poll.totals[i]} votes)`);
+          .text(
+            `${Math.round(percent)}% (${(this.poll as Poll).totals[i]} votes)`
+          );
       });
     }
 
-    this.ui.votes.text(`${this.poll.votesCast} votes`);
+    this.ui.votes.text(`${(this.poll as Poll).votesCast} votes`);
   }
 
   pollStartMessage() {
-    let message = `A poll has been started. Type ${this.poll.totals
+    let message = `A poll has been started. Type ${(this.poll as Poll).totals
       .map((_, i) => i + 1)
       .join(' or ')} in chat to participate.`;
-    if (this.poll.type === PollType.Weighted) {
-      message = `A sub-weighted poll has been started. The value of your vote depends on your subscription tier. Type ${this.poll.totals
+    if ((this.poll as Poll).type === PollType.Weighted) {
+      message = `A sub-weighted poll has been started. The value of your vote depends on your subscription tier. Type ${(
+        this.poll as Poll
+      ).totals
         .map((_, i) => i + 1)
         .join(' or ')} in chat to participate.`;
     }
@@ -310,7 +337,7 @@ class ChatPoll {
     MessageBuilder.info(message).into(this.chat);
   }
 
-  pollEndMessage(winner, winnerPercentage) {
+  pollEndMessage(winner: number, winnerPercentage: number) {
     let message = `The poll has ended. Option ${winner} won!`;
     if (winnerPercentage > 0) {
       message = `The poll has ended. Option ${winner} won with ${Math.round(
