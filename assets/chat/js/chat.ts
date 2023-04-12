@@ -709,7 +709,7 @@ class Chat {
     this.loadingscrn = this.ui.find('#chat-loading');
     this.windowselect = this.ui.find('#chat-windows-select');
     this.inputhistory = new ChatInputHistory(this);
-    this.userfocus = new ChatUserFocus(this, this.css);
+    this.userfocus = new ChatUserFocus(this, this.css as CSSStyleSheet);
     this.mainwindow = new ChatWindow('main').into(this);
     this.mutedtimer = new MutedTimer(this);
     this.chatpoll = new ChatPoll(this);
@@ -1022,7 +1022,9 @@ class Chat {
   setHistory(history: string[]) {
     if (history && history.length > 0) {
       this.backlogloading = true;
-      history.forEach((line) => this.source.parseAndDispatch({ data: line }));
+      history.forEach((line) =>
+        this.source.parseAndDispatch({ data: line } as MessageEvent)
+      );
       this.backlogloading = false;
       MessageBuilder.element('<hr/>').into(this);
       (this.mainwindow as ChatWindow).update(true);

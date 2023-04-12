@@ -6,7 +6,7 @@ const localStorage = window.localStorage || {
 const { JSON } = window;
 
 class ChatStore {
-  static write(name, obj) {
+  static write(name: string, obj: unknown) {
     let str = '';
     try {
       str = JSON.stringify(
@@ -16,15 +16,16 @@ class ChatStore {
     localStorage.setItem(name, str);
   }
 
-  static read(name) {
+  static read(name: string) {
     let data = null;
     try {
-      data = JSON.parse(localStorage.getItem(name));
+      const item = localStorage.getItem(name);
+      if (item) data = JSON.parse(item);
     } catch {} // eslint-disable-line no-empty
     return data;
   }
 
-  static remove(name) {
+  static remove(name: string) {
     try {
       localStorage.removeItem(name);
     } catch {} // eslint-disable-line no-empty

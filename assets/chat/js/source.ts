@@ -21,6 +21,12 @@ const WebSocket = window.WebSocket || window.MozWebSocket;
  * s.connect('wss://localhost')
  */
 class ChatSource extends EventEmitter {
+  socket: WebSocket | null;
+  url: string | null;
+  retryOnDisconnect: boolean;
+  retryAttempts: number;
+  retryTimer: NodeJS.Timeout | null;
+
   constructor() {
     super();
     this.socket = null;
@@ -34,7 +40,7 @@ class ChatSource extends EventEmitter {
     return this.socket && this.socket.readyState === this.socket.OPEN;
   }
 
-  connect(url) {
+  connect(url: string) {
     this.url = url;
     this.retryAttempts += 1;
     try {
@@ -68,16 +74,16 @@ class ChatSource extends EventEmitter {
       this.socket.close();
   }
 
-  onOpen(e) {
+  onOpen(e: Event) {
     this.emit('OPEN', e);
     this.retryAttempts = 0;
     this.retryOnDisconnect = true;
   }
 
-  onClose(e) {
+  onClose(e: CloseEvent) {
     // 1001 is the Going Away code, since it happens frequently when CloudFlare servers update, we just instantly reconnect silently
     if (e.code === 1001) {
-      this.connect(this.url);
+      this.connect(this.url as string);
       return;
     }
     let retryMilli = 0;
@@ -87,16 +93,19 @@ class ChatSource extends EventEmitter {
         this.retryAttempts === 0
           ? Math.floor(Math.random() * (3000 - 501 + 1)) + 501
           : Math.floor(Math.random() * (30000 - 5000 + 1)) + 5000;
-      this.retryTimer = setTimeout(() => this.connect(this.url), retryMilli);
+      this.retryTimer = setTimeout(
+        () => this.connect(this.url as string),
+        retryMilli
+      );
     }
     this.emit('CLOSE', retryMilli);
   }
 
-  onMsg(e) {
+  onMsg(e: MessageEvent) {
     this.parseAndDispatch(e);
   }
 
-  parseAndDispatch(event) {
+  parseAndDispatch(event: MessageEvent) {
     const eventname = event.data.split(' ', 1)[0].toUpperCase();
     const payload = event.data.substring(eventname.length + 1);
     let data = null;
@@ -109,10 +118,10 @@ class ChatSource extends EventEmitter {
     this.emit(eventname, data);
   }
 
-  send(eventname, data) {
+  send(eventname: string, data: unknown) {
     const payload = typeof data === 'string' ? data : JSON.stringify(data);
     if (this.isConnected()) {
-      this.socket.send(`${eventname} ${payload}`);
+      (this.socket as WebSocket).send(`${eventname} ${payload}`);
     } else {
       this.emit('ERR', { description: 'notconnected' });
     }

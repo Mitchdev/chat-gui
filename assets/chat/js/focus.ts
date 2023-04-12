@@ -1,18 +1,25 @@
 import $ from 'jquery';
+import Chat from './chat';
 
 /**
  * Handles the dimming of the chat when you click on a username
  * within the chat GUI
  */
 class ChatUserFocus {
-  constructor(chat, css) {
+  chat: Chat;
+  css: CSSStyleSheet;
+  focused: string[];
+
+  constructor(chat: Chat, css: CSSStyleSheet) {
     this.chat = chat;
     this.css = css;
     this.focused = [];
-    this.chat.output.on('click', (e) => this.toggleElement(e.target));
+    (this.chat.output as JQuery).on('click', (e) =>
+      this.toggleElement(e.target)
+    );
   }
 
-  toggleElement(target) {
+  toggleElement(target: HTMLElement) {
     const t = $(target);
     if (t.hasClass('chat-user')) {
       if (!this.chat.settings.get('focusmentioned'))
@@ -41,7 +48,7 @@ class ChatUserFocus {
     return this;
   }
 
-  addCssRule(value, isFlair) {
+  addCssRule(value: string, isFlair: boolean) {
     let rule;
     if (isFlair) {
       rule = `.msg-user.${value}{opacity:1 !important;}`;
@@ -55,7 +62,7 @@ class ChatUserFocus {
     this.redraw();
   }
 
-  removeCssRule(index) {
+  removeCssRule(index: number) {
     this.css.deleteRule(index);
     this.focused.splice(index, 1);
     this.redraw();
@@ -68,7 +75,7 @@ class ChatUserFocus {
   }
 
   redraw() {
-    this.chat.ui.toggleClass('focus', this.focused.length > 0);
+    (this.chat.ui as JQuery).toggleClass('focus', this.focused.length > 0);
   }
 }
 

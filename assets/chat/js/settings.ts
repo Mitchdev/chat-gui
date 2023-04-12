@@ -1,6 +1,7 @@
+import Chat from './chat';
 import ChatStore from './store';
 
-function upgradeSettings(chat, oldversion) {
+function upgradeSettings(chat: Chat, oldversion: number) {
   // DGG 1.x -> 2.x
   if (oldversion <= 0) {
     let arr = ChatStore.read('chatoptions');
