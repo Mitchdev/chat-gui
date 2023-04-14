@@ -1,8 +1,13 @@
 import { debounce } from 'throttle-debounce';
+import Chat from '../chat';
 import ChatMenu from './ChatMenu';
 
 export default class ChatEmoteMenu extends ChatMenu {
-  constructor(ui, btn, chat) {
+  searchterm: string;
+  emoteMenuContent: JQuery;
+  searchinput: JQuery;
+
+  constructor(ui: JQuery, btn: JQuery, chat: Chat) {
     super(ui, btn, chat);
     this.searchterm = '';
     this.emoteMenuContent = this.ui.find('.content');
@@ -20,7 +25,7 @@ export default class ChatEmoteMenu extends ChatMenu {
       debounce(
         100,
         () => {
-          this.searchterm = this.searchinput.val();
+          this.searchterm = this.searchinput.val() as string;
           this.buildEmoteMenu();
         },
         { atBegin: false }
@@ -30,7 +35,7 @@ export default class ChatEmoteMenu extends ChatMenu {
 
   show() {
     super.show();
-    this.searchinput.focus();
+    this.searchinput.trigger('focus');
     this.buildEmoteMenu();
   }
 
@@ -57,7 +62,7 @@ export default class ChatEmoteMenu extends ChatMenu {
     }
   }
 
-  buildEmoteMenuSection(title, emotes, disabled = false) {
+  buildEmoteMenuSection(title: string, emotes: string[], disabled = false) {
     const emotesStr = emotes
       .map((e) => this.buildEmoteItem(e, disabled))
       .join('');
@@ -74,7 +79,7 @@ export default class ChatEmoteMenu extends ChatMenu {
     return '';
   }
 
-  buildEmoteItem(emote, disabled) {
+  buildEmoteItem(emote: string, disabled: boolean) {
     if (this.searchterm && this.searchterm.length > 0) {
       if (emote.toLowerCase().indexOf(this.searchterm.toLowerCase()) >= 0) {
         return `<div class="emote-item"><span title="${emote}" class="emote ${emote}${
@@ -88,10 +93,10 @@ export default class ChatEmoteMenu extends ChatMenu {
     }">${emote}</span></div>`;
   }
 
-  selectEmote(emote) {
-    const value = this.chat.input.val().toString().trim();
-    this.chat.input
+  selectEmote(emote: string) {
+    const value = ((this.chat.input as JQuery).val() as string).trim();
+    (this.chat.input as JQuery)
       .val(`${value + (value === '' ? '' : ' ') + emote} `)
-      .focus();
+      .trigger('focus');
   }
 }

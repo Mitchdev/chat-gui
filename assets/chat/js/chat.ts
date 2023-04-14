@@ -1404,7 +1404,7 @@ class Chat {
     }
 
     if (this.debounceFocus === null) {
-      this.debounceFocus = debounce(10, (c) => c.input.focus(), {
+      this.debounceFocus = debounce(10, (c) => c.input.trigger('focus'), {
         atBegin: false,
       });
     }

@@ -1,9 +1,15 @@
 import $ from 'jquery';
 import ChatMenu from './ChatMenu';
 import ChatUser from '../user';
+import Chat from '../chat';
 
 export default class ChatWhisperUsers extends ChatMenu {
-  constructor(ui, btn, chat) {
+  unread: number;
+  empty: JQuery;
+  notif: JQuery;
+  usersEl: JQuery;
+
+  constructor(ui: JQuery, btn: JQuery, chat: Chat) {
     super(ui, btn, chat);
     this.unread = 0;
     this.empty = $(`<span class="empty">No new whispers :(</span>`);
@@ -18,7 +24,7 @@ export default class ChatWhisperUsers extends ChatMenu {
     );
   }
 
-  removeConversation(nick) {
+  removeConversation(nick: string) {
     const normalized = nick.toLowerCase();
     this.chat.whispers.delete(normalized);
     this.chat.removeWindow(normalized);
@@ -28,7 +34,7 @@ export default class ChatWhisperUsers extends ChatMenu {
   updateNotification() {
     const wasunread = this.unread;
     this.unread = [...this.chat.whispers.entries()]
-      .map((e) => parseInt(e[1].unread, 10))
+      .map((e) => e[1].unread)
       .reduce((a, b) => a + b, 0);
     if (wasunread < this.unread) {
       this.btn.addClass('ping');
@@ -63,7 +69,7 @@ export default class ChatWhisperUsers extends ChatMenu {
     super.redraw();
   }
 
-  addConversation(nick, unread) {
+  addConversation(nick: string, unread: number) {
     const user = this.chat.users.get(nick.toLowerCase()) || new ChatUser(nick);
     this.usersEl.append(`
             <li class="conversation unread-${unread}">

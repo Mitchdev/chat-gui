@@ -1,21 +1,34 @@
 import ChatScrollPlugin from '../scroll';
 import EventEmitter from '../emitter';
+import Chat from '../chat';
 
 export default class ChatMenu extends EventEmitter {
-  constructor(ui, btn, chat) {
+  ui: JQuery;
+  btn: JQuery;
+  chat: Chat;
+
+  visible: boolean;
+  shown: boolean;
+
+  scrollplugin!: ChatScrollPlugin;
+
+  constructor(ui: JQuery, btn: JQuery, chat: Chat) {
     super();
     this.ui = ui;
     this.btn = btn;
     this.chat = chat;
     this.visible = false;
     this.shown = false;
-    this.ui.find('.scrollable').each((i, e) => {
-      this.scrollplugin = new ChatScrollPlugin(e.querySelector('.content'), e);
+    this.ui.find('.scrollable').each((_, e) => {
+      this.scrollplugin = new ChatScrollPlugin(
+        e.querySelector('.content') as HTMLDivElement,
+        e as HTMLDivElement
+      );
     });
     this.ui.on('click', '.close,.chat-menu-close', this.hide.bind(this));
-    this.btn.on('click', (e) => {
-      if (this.visible) chat.input.focus();
-      this.toggle(e);
+    this.btn.on('click', () => {
+      if (this.visible) (chat.input as JQuery).trigger('focus');
+      this.toggle();
       return false;
     });
   }
@@ -50,7 +63,7 @@ export default class ChatMenu extends EventEmitter {
     if (this.visible && this.scrollplugin) this.scrollplugin.reset();
   }
 
-  static closeMenus(chat) {
+  static closeMenus(chat: Chat) {
     chat.menus.forEach((m) => m.hide());
   }
 }

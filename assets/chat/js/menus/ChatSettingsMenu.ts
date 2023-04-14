@@ -1,11 +1,14 @@
 import $ from 'jquery';
-import { fetch } from 'whatwg-fetch';
+import 'whatwg-fetch';
 import ChatMenu from './ChatMenu';
 import { isKeyCode, KEYCODES } from '../const';
 import { Notification } from '../notification';
+import Chat from '../chat';
 
 export default class ChatSettingsMenu extends ChatMenu {
-  constructor(ui, btn, chat) {
+  notificationEl: JQuery;
+
+  constructor(ui: JQuery, btn: JQuery, chat: Chat) {
     super(ui, btn, chat);
     this.notificationEl = this.ui.find(
       '#chat-settings-notification-permissions'
@@ -18,11 +21,9 @@ export default class ChatSettingsMenu extends ChatMenu {
     );
   }
 
-  onCustomHighlightChange(e) {
+  onCustomHighlightChange(e: JQuery.TriggeredEvent) {
     if (e.type === 'focusout' || isKeyCode(e, KEYCODES.ENTER)) {
-      const data = $(e.target)
-        .val()
-        .toString()
+      const data = ($(e.target).val() as string)
         .split(',')
         .map((s) => s.trim());
       this.chat.settings.set('customhighlight', [...new Set(data)]);
@@ -31,7 +32,7 @@ export default class ChatSettingsMenu extends ChatMenu {
     }
   }
 
-  onSettingsChange(e) {
+  onSettingsChange(e: JQuery.ChangeEvent) {
     const val = this.getSettingValue(e.target);
     const name = e.target.getAttribute('name');
     if (val !== undefined) {
@@ -62,16 +63,16 @@ export default class ChatSettingsMenu extends ChatMenu {
       this.ui
         .find('input,select')
         .get()
-        .filter((e) => this.chat.settings.has(e.getAttribute('name')))
+        .filter((e) => this.chat.settings.has(e.getAttribute('name') as string))
         .forEach((e) =>
           this.setSettingValue(
             e,
-            this.chat.settings.get(e.getAttribute('name'))
+            this.chat.settings.get(e.getAttribute('name') as string) as string
           )
         );
       this.ui
         .find('textarea[name="customhighlight"]')
-        .val(this.chat.settings.get('customhighlight') || '');
+        .val((this.chat.settings.get('customhighlight') as string[]) || '');
       this.updateNotification();
     }
     super.show();
@@ -110,7 +111,7 @@ export default class ChatSettingsMenu extends ChatMenu {
     });
   }
 
-  getSettingValue(e) {
+  getSettingValue(e: HTMLElement) {
     if (e.getAttribute('type') === 'checkbox') {
       const val = $(e).is(':checked');
       return Boolean(e.hasAttribute('data-opposite') ? !val : val);
@@ -124,7 +125,7 @@ export default class ChatSettingsMenu extends ChatMenu {
     return undefined;
   }
 
-  setSettingValue(e, val) {
+  setSettingValue(e: HTMLElement, val: string) {
     if (e.getAttribute('type') === 'checkbox') {
       $(e).prop(
         'checked',

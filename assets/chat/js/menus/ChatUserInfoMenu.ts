@@ -1,11 +1,40 @@
 import $ from 'jquery';
 import moment from 'moment';
+import Chat from '../chat';
 import { MessageBuilder } from '../messages';
+import { ChatWhisper, WebsiteApiTypes } from '../types';
 import ChatUser from '../user';
 import ChatMenuFloating from './ChatMenuFloating';
 
 export default class ChatUserInfoMenu extends ChatMenuFloating {
-  constructor(ui, btn, chat) {
+  clickedNick: string;
+  messageArray: JQuery[];
+
+  header: JQuery;
+
+  createdDateSubheader: HTMLElement;
+
+  tagSubheader: HTMLElement;
+
+  flairList: JQuery;
+  flairSubheader: HTMLElement;
+
+  messagesList: JQuery;
+  messagesContainer: JQuery;
+  messagesSubheader: HTMLElement;
+
+  muteUserBtn: JQuery;
+  banUserBtn: JQuery;
+  logsUserBtn: JQuery;
+  whisperUserBtn: JQuery;
+  ignoreUserBtn: JQuery;
+  unignoreUserBtn: JQuery;
+
+  actionInputs: JQuery;
+  muteDurations: string[];
+  banDurations: string[];
+
+  constructor(ui: JQuery, btn: JQuery, chat: Chat) {
     super(ui, btn, chat, ui.find('.toolbar'));
 
     this.clickedNick = '';
@@ -37,7 +66,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
 
     this.configureButtons();
 
-    this.chat.output.on('contextmenu', '.msg-user .user', (e) => {
+    (this.chat.output as JQuery).on('contextmenu', '.msg-user .user', (e) => {
       const user = $(e.currentTarget).closest('.msg-user');
       this.showUser(e, user);
 
@@ -46,12 +75,12 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     });
 
     // preventing the window from closing instantly
-    this.chat.output.on('mouseup', '.msg-user .user', (e) => {
+    (this.chat.output as JQuery).on('mouseup', '.msg-user .user', (e) => {
       e.stopPropagation();
     });
   }
 
-  showUser(e, user, userlist = false) {
+  showUser(e: JQuery.ContextMenuEvent, user: JQuery, userlist = false) {
     this.clickedNick = user.data('username');
 
     this.setActionsVisibility();
@@ -100,7 +129,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
             nick: this.clickedNick,
             unread: 0,
             open: false,
-          });
+          } as ChatWhisper);
         this.chat.openConversation(this.clickedNick);
       }
       this.hide();
@@ -149,7 +178,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     }
   }
 
-  setInputVisibility(button) {
+  setInputVisibility(button = '') {
     this.actionInputs.removeClass('hidden');
     this.banUserBtn.removeClass('active');
     this.muteUserBtn.removeClass('active');
@@ -174,7 +203,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     }
   }
 
-  createDurationButtons(duration, button) {
+  createDurationButtons(duration: string, button: string) {
     const durationButton = document.createElement('a');
     durationButton.classList.add('chat-tool-btn');
     switch (button) {
@@ -196,7 +225,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     this.actionInputs.append(durationButton);
   }
 
-  processMuteOrBan(providedDuration) {
+  processMuteOrBan(providedDuration: string) {
     switch (this.actionInputs.data('type')) {
       case 'ban':
         this.chat.cmdBAN(
@@ -217,7 +246,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     this.hide();
   }
 
-  addContent(message, userlist) {
+  addContent(message: JQuery, userlist: boolean) {
     this.messageArray = userlist ? [] : [message];
 
     const prettyNick = message.find('.user')[0].innerText;
@@ -280,8 +309,8 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     this.redraw();
   }
 
-  buildCreatedDate(nick) {
-    const user = this.chat.users.get(nick.toLowerCase());
+  buildCreatedDate(nick: string) {
+    const user = this.chat.users.get(nick.toLowerCase()) as ChatUser;
     if (user.createdDate === '') {
       return '';
     }
@@ -294,7 +323,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     return timeHTML;
   }
 
-  buildFeatures(nick, messageFeatures) {
+  buildFeatures(nick: string, messageFeatures: string) {
     const user = this.chat.users.get(nick);
     const messageFeaturesArray = messageFeatures
       .split(' ')
@@ -308,7 +337,7 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     return features !== '' ? `<span class="features">${features}</span>` : '';
   }
 
-  createMessages(userlist) {
+  createMessages(userlist: boolean) {
     const displayedMessages = [];
     if (this.messageArray.length > 0) {
       let nextMsg = this.messageArray[0].next('.msg-continue');
@@ -331,10 +360,10 @@ export default class ChatUserInfoMenu extends ChatMenuFloating {
     return displayedMessages;
   }
 
-  buildFeatureHTML(featureArray) {
+  buildFeatureHTML(featureArray: string[]) {
     return featureArray
       .filter((e) => this.chat.flairsMap.has(e))
-      .map((e) => this.chat.flairsMap.get(e))
+      .map((e) => this.chat.flairsMap.get(e) as WebsiteApiTypes.Flair)
       .reduce((str, e) => {
         if (e.hidden !== true) {
           return `${str}<i class="flair ${e.name}" title="${e.label}"></i> `;
