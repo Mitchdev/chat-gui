@@ -4,14 +4,14 @@ import ChatEmoteMessage from '../messages/ChatEmoteMessage';
 
 export default class EmoteFormatter {
   format(
-    chat: Chat | null,
+    chat: Chat,
     str: string,
     message: ChatEmoteMessage | ChatUserMessage | null = null
   ) {
     const regex =
       !message || !(message as ChatUserMessage).user
-        ? (chat as Chat).emoteService.systemEmoteRegex
-        : (chat as Chat).emoteService.emoteRegexForUser(
+        ? chat.emoteService.systemEmoteRegex
+        : chat.emoteService.emoteRegexForUser(
             (message as ChatUserMessage).user
           );
 

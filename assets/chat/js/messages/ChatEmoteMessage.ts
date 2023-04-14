@@ -47,7 +47,7 @@ export default class ChatEmoteMessage extends ChatMessage {
     this.combo_txt = null;
   }
 
-  html(chat: Chat | null = null) {
+  html(chat: Chat) {
     this.text = $(
       `<span class="text">${this.emoteFormatter.format(
         chat,

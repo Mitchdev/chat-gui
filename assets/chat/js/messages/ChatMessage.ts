@@ -44,7 +44,7 @@ export default class ChatMessage extends ChatUIMessage {
     this.unformatted = unformatted;
   }
 
-  html(chat: Chat | null = null) {
+  html(chat: Chat) {
     const classes = [];
     const attr = {};
     if (this.continued) classes.push('msg-continue');
@@ -55,7 +55,7 @@ export default class ChatMessage extends ChatUIMessage {
     );
   }
 
-  buildMessageTxt(chat: Chat | null) {
+  buildMessageTxt(chat: Chat) {
     // TODO we strip off the `/me ` of every message -- must be a better way to do this
     let msg =
       this.message.substring(0, 4).toLowerCase() === '/me '

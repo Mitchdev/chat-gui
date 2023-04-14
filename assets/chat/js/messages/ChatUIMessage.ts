@@ -39,10 +39,10 @@ export default class ChatUIMessage {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  html(chat: Chat | null = null) {
+  html(chat: Chat) {
     return this.wrap(this.message);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
-  afterRender(chat: Chat | null = null) {}
+  afterRender(chat: Chat) {}
 }

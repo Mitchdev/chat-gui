@@ -48,7 +48,7 @@ export default class PinnedMessage extends ChatUserMessage {
     return null;
   }
 
-  pin(chat: Chat | null = null, visibility = true) {
+  pin(chat: Chat, visibility = true) {
     if (!this.ui || !chat) return this;
 
     this.ui.id = 'msg-pinned';

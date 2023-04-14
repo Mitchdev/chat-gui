@@ -59,7 +59,7 @@ function buildSearchCriteria(str: string, offset: number) {
 }
 
 class ChatAutoComplete {
-  chat: Chat | null;
+  chat: Chat;
   ui: JQuery;
   container: JQuery;
   buckets: Map<string, Map<string, AutoCompleteItem>>;
@@ -68,12 +68,12 @@ class ChatAutoComplete {
   selected: number;
   input: JQuery | null;
 
-  constructor() {
+  constructor(chat: Chat) {
     this.ui = $(`<div id="chat-auto-complete"><ul></ul></div>`);
     this.ui.on('click', 'li', (e) =>
       this.select(parseInt(e.currentTarget.getAttribute('data-index'), 10))
     );
-    this.chat = null;
+    this.chat = chat;
     this.container = $(this.ui[0].firstElementChild as HTMLElement);
     this.buckets = new Map();
     this.results = [];

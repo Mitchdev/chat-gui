@@ -484,7 +484,7 @@ class Chat {
     this.whispers = new Map();
     this.windows = new Map();
     this.settings = new Map(settingsdefault);
-    this.autocomplete = new ChatAutoComplete();
+    this.autocomplete = new ChatAutoComplete(this);
     this.inputhistory = null;
     this.userfocus = null;
     this.mutedtimer = null;

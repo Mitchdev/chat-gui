@@ -34,7 +34,7 @@ export default class ChatUserMessage extends ChatMessage {
     this.mentioned = [];
   }
 
-  html(chat: Chat | null = null) {
+  html(chat: Chat) {
     const classes = [];
     const attr: {
       'data-id'?: string;
@@ -75,7 +75,7 @@ export default class ChatUserMessage extends ChatMessage {
     );
   }
 
-  buildFeatures(user: ChatUser, chat: Chat | null) {
+  buildFeatures(user: ChatUser, chat: Chat) {
     if (!chat) return '';
     const features = (user.features || [])
       .filter((e) => chat.flairsMap.has(e))
