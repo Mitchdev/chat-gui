@@ -1,10 +1,14 @@
 import $ from 'jquery';
 
 import tlds from '../../../tld.json';
+import Chat from '../chat';
 
 const gtld = `(?:${[...tlds].join('|')})`;
 
 export default class UrlFormatter {
+  linkregex: RegExp;
+  elem: JQuery;
+
   constructor() {
     const unicodeShortcuts = {
       'p{L}':
@@ -44,7 +48,7 @@ export default class UrlFormatter {
 
   // stolen from angular.js
   // https://github.com/angular/angular.js/blob/v1.3.14/src/ngSanitize/sanitize.js#L435
-  encodeUrl(value) {
+  encodeUrl(value: string) {
     return value
       .replace(/&/g, '&amp;')
       .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, (v) => {
@@ -57,7 +61,7 @@ export default class UrlFormatter {
       .replace(/>/g, '&gt;');
   }
 
-  format(chat, str) {
+  format(chat: Chat, str: string) {
     if (!str) return undefined;
     let extraclass = '';
 

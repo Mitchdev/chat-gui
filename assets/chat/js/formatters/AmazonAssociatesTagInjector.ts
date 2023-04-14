@@ -1,11 +1,12 @@
-export default class AmazonAssociatesTagInjector {
-  constructor() {
-    this.amazonLinkRegex =
-      /\bhttps:\/\/www\.amazon\.(com|ca|co\.uk|de)[-a-zA-Z0-9()@:%_+.~#?&//=]*\b/gi;
-  }
+import Chat from '../chat';
 
-  format(chat, str) {
-    if (!chat.config.amazonTags) {
+export default class AmazonAssociatesTagInjector {
+  amazonLinkRegex =
+    /\bhttps:\/\/www\.amazon\.(com|ca|co\.uk|de)[-a-zA-Z0-9()@:%_+.~#?&//=]*\b/gi;
+
+  format(chat: Chat, str: string) {
+    const { amazonTags } = chat.config;
+    if (!amazonTags) {
       return str;
     }
 
@@ -13,7 +14,7 @@ export default class AmazonAssociatesTagInjector {
       try {
         const parsedAmazonLink = new URL(amazonLink);
 
-        const tag = chat.config.amazonTags[parsedAmazonLink.host];
+        const tag = amazonTags[parsedAmazonLink.host];
         if (!tag) {
           return amazonLink;
         }

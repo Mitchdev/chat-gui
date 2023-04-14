@@ -4,7 +4,9 @@ interface ChatConfig {
   cdn: { base: string };
   cacheKey?: string;
   banAppealUrl?: string | null;
-  amazonTags?: string | null;
+  amazonTags?: {
+    [key: string]: string;
+  } | null;
   welcomeMessage?: string;
   stalkEnabled?: boolean;
   mentionsEnabled?: boolean;

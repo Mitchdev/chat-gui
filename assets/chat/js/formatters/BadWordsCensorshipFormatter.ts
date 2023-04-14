@@ -1,10 +1,10 @@
-export default class BadWordsCensorshipFormatter {
-  constructor() {
-    this.badWordsRegex =
-      /(fuck|shit|cunt|whore|bitch|faggot|fag|nigger|nigga|gusano|cracker|rape)/gi;
-  }
+import Chat from '../chat';
 
-  format(chat, str /* , message=null */) {
+export default class BadWordsCensorshipFormatter {
+  badWordsRegex =
+    /(fuck|shit|cunt|whore|bitch|faggot|fag|nigger|nigga|gusano|cracker|rape)/gi;
+
+  format(chat: Chat, str: string) {
     if (chat.settings.get('censorbadwords')) {
       return str.replace(this.badWordsRegex, (match) =>
         '*'.repeat(match.length)

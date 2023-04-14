@@ -1,5 +1,8 @@
+import Chat from '../chat';
+import { ChatUserMessage } from '../messages';
+
 export default class MentionedUserFormatter {
-  format(chat, str, message = null) {
+  format(chat: Chat, str: string, message: ChatUserMessage | null = null) {
     if (message && message.mentioned && message.mentioned.length > 0) {
       return str.replace(
         new RegExp(
