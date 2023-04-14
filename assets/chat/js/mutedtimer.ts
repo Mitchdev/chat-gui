@@ -1,6 +1,8 @@
 import moment from 'moment';
+import Chat from './chat';
+import { ChatWebsocketTypes } from './types';
 
-function isMuteActive(mute) {
+function isMuteActive(mute: ChatWebsocketTypes.IN.Mute) {
   // If either field is `undefined`, we don't have enough information to
   // determine if the mute is expired.
   if (mute.timestamp === undefined || mute.duration === undefined) {
@@ -16,10 +18,16 @@ function isMuteActive(mute) {
 }
 
 class MutedTimer {
-  constructor(chat) {
+  chat: Chat;
+  ticking: boolean;
+  duration: moment.Duration | null;
+  timerInterval: NodeJS.Timeout | null;
+
+  constructor(chat: Chat) {
     this.chat = chat;
     this.ticking = false;
     this.duration = null;
+    this.timerInterval = null;
   }
 
   startTimer() {
@@ -38,7 +46,7 @@ class MutedTimer {
   }
 
   tickTimer() {
-    this.duration = this.duration.subtract(1, 'seconds');
+    this.duration = (this.duration as moment.Duration).subtract(1, 'seconds');
 
     if (this.duration.asSeconds() <= 0) {
       this.stopTimer();
@@ -54,7 +62,7 @@ class MutedTimer {
 
     this.ticking = false;
 
-    clearInterval(this.timerInterval);
+    clearInterval(this.timerInterval as NodeJS.Timeout);
 
     this.duration = null;
     this.chat.setDefaultPlaceholderText();
@@ -68,7 +76,10 @@ class MutedTimer {
     // Only update the placeholder text when the main chat window is active.
     // A muted user can still send messages in direct message windows.
     if (this.chat.getActiveWindow().name === 'main') {
-      this.chat.input.attr('placeholder', this.getPlaceholderText());
+      (this.chat.input as JQuery).attr(
+        'placeholder',
+        this.getPlaceholderText()
+      );
     }
   }
 
@@ -79,7 +90,7 @@ class MutedTimer {
   }
 
   getReadableDuration() {
-    return this.duration.humanize(true, { s: 60, ss: 2 });
+    return (this.duration as moment.Duration).humanize(true, { s: 60, ss: 2 });
   }
 }
 

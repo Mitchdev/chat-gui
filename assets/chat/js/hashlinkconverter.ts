@@ -5,15 +5,13 @@ const INVALID_LINK_ERROR = 'Invalid link';
 const MISSING_VIDEO_ID_ERROR = 'Invalid Youtube link - Missing video id';
 
 class HashLinkConverter {
-  constructor() {
-    this.hasHttp = /^http[s]?:\/{0,2}/;
-    this.youtubeLiveRegex = /^live\/([a-zA-z0-9_]{11})$/;
-    this.twitchClipRegex = /^[^/]+\/clip\/([a-zA-z0-9-]*)$/;
-    this.twitchVODRegex = /^videos\/(\d+)$/;
-    this.rumbleEmbedRegex = /^embed\/([a-z0-9]+)\/?$/;
-  }
+  hasHttp = /^http[s]?:\/{0,2}/;
+  youtubeLiveRegex = /^live\/([a-zA-z0-9_]{11})$/;
+  twitchClipRegex = /^[^/]+\/clip\/([a-zA-z0-9-]*)$/;
+  twitchVODRegex = /^videos\/(\d+)$/;
+  rumbleEmbedRegex = /^embed\/([a-z0-9]+)\/?$/;
 
-  convert(urlString) {
+  convert(urlString: string) {
     if (!urlString) {
       throw new Error(MISSING_ARG_ERROR);
     }

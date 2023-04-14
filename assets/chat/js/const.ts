@@ -40,11 +40,11 @@ const KEYCODES = {
   F12: 123,
 };
 
-function getKeyCode(e) {
+function getKeyCode(e: JQuery.Event | KeyboardEvent) {
   return e.which || e.keyCode || -1;
 }
 
-function isKeyCode(e, code) {
+function isKeyCode(e: JQuery.Event | KeyboardEvent, code: number) {
   return getKeyCode(e) === code;
 }
 
