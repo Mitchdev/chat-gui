@@ -200,6 +200,11 @@ hr {
       center;
     background-size: contain;
   }
+  #chat-sub-dono-activity-btn .btn-icon {
+    background: transparent url('../img/icon-sack-dollar.svg') no-repeat center
+      center;
+    background-size: contain;
+  }
   #chat-settings-btn .btn-icon {
     background: transparent url('../img/icon-settings.svg') no-repeat center
       center;
@@ -527,6 +532,15 @@ hr {
   padding-bottom: $gutter-md;
   time {
     margin-right: $gutter-md;
+  }
+}
+
+#chat-sub-dono-activity {
+  .msg-donation,
+  .msg-subscription,
+  .msg-giftsub,
+  .msg-massgift {
+    margin: $gutter-md;
   }
 }
 
@@ -1158,11 +1172,14 @@ hr {
   z-index: 220;
   height: auto;
   bottom: 6.3em;
-  max-width: 75%;
+  max-width: 750px;
   min-width: $chat-min-width;
   width: 33.3333%;
   right: 0;
   top: 0;
+  &.large {
+    width: 66.6666%;
+  }
   .toolbar {
     position: relative;
     border-bottom: 1px solid $color-surface-dark4;

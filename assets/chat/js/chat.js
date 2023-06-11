@@ -36,6 +36,7 @@ import makeSafeForRegex from './regex';
 import { HashLinkConverter, MISSING_ARG_ERROR } from './hashlinkconverter';
 import ChatCommands from './commands';
 import MessageTemplateHTML from '../../views/templates.html';
+import ChatSubDonoActivity from './menus/ChatSubDonoActivity';
 
 const regexslashcmd = /^\/([a-z0-9]+)[\s]?/i;
 const regextime = /(\d+(?:\.\d*)?)([a-z]+)?/gi;
@@ -419,6 +420,14 @@ class Chat {
       new ChatWhisperUsers(
         this.ui.find('#chat-whisper-users'),
         this.ui.find('#chat-whisper-btn'),
+        this
+      )
+    );
+    this.menus.set(
+      'sub-dono-activity',
+      new ChatSubDonoActivity(
+        this.ui.find('#chat-sub-dono-activity'),
+        this.ui.find('#chat-sub-dono-activity-btn'),
         this
       )
     );
